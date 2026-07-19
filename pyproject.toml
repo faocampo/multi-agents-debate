@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-agent-experts"
+version = "0.1.0"
+description = "Conflict-driven multi-agent analysis with independent experts, debate, adversarial review, and synthesis."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Federico Ocampo" }]
+dependencies = []
+
+[project.scripts]
+multi-agent-experts = "multi_agent_experts.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
