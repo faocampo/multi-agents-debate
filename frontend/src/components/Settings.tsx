@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RoleDefinition, RoleInput } from "../types";
 import { DefaultRoleCountPicker } from "./settings/DefaultRoleCountPicker";
+import { ModelSelector } from "./settings/ModelSelector";
 import { RoleForm } from "./settings/RoleForm";
 import { RoleList } from "./settings/RoleList";
 import { useRoleLibrary } from "./settings/useRoleLibrary";
@@ -58,6 +59,21 @@ export function Settings({ onBack }: SettingsProps) {
             saving={library.countSaving}
             onChange={(count) => void library.changeCount(count)}
           />
+          <section className="settings-card">
+            <div className="settings-card-heading">
+              <p className="eyebrow">Provider</p>
+              <h2>Language model</h2>
+            </div>
+            <p className="settings-card-copy">
+              Select the OpenRouter model that will generate roles, analyses, and synthesis.
+            </p>
+            <ModelSelector
+              selected={library.settings.llm_model}
+              saving={library.modelSaving}
+              error={library.modelError}
+              onChange={(modelId) => void library.changeModel(modelId)}
+            />
+          </section>
           <RoleForm
             key={editing?.id ?? "new"}
             editing={editing}

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import Settings
 from app.models import CreateRoleRequest, UpdateRoleLibrarySettingsRequest
 from app.role_store import (
     DuplicateRoleName,
@@ -140,3 +141,21 @@ async def test_library_size_is_bounded(tmp_path: Path) -> None:
 
     with pytest.raises(RoleLibraryFull):
         await store.create_role(CreateRoleRequest(name="Overflow", focus="focus", bias="bias"))
+
+
+@pytest.mark.asyncio
+async def test_llm_model_default_is_effective_but_not_persisted(tmp_path: Path) -> None:
+    default_model = Settings(_env_file=None).llm_model
+    store = RoleLibraryStore(tmp_path / "roles.json", default_llm_model=default_model)
+    settings = await store.get_settings()
+    assert settings.llm_model == default_model
+
+    # The file should not acquire the default value just from reading it.
+    reopened_default = RoleLibraryStore(tmp_path / "roles.json")
+    assert (await reopened_default.get_settings()).llm_model is None
+
+    await store.update_settings(UpdateRoleLibrarySettingsRequest(llm_model="selected-model"))
+    assert (await store.get_settings()).llm_model == "selected-model"
+
+    reopened = RoleLibraryStore(tmp_path / "roles.json")
+    assert (await reopened.get_settings()).llm_model == "selected-model"

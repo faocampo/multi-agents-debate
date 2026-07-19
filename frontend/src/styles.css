@@ -603,6 +603,24 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
 .role-field small { color: var(--faint); font: 10px "DM Mono", monospace; justify-self: end; }
 .role-field-prompt textarea { min-height: 96px; }
 
+.model-selector { display: grid; gap: 16px; }
+.role-field select, .model-select {
+  width: 100%;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: #11151d;
+  border: 1px solid #303743;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.role-field select:disabled, .model-select:disabled { opacity: 0.55; cursor: not-allowed; }
+.role-field select:focus, .model-select:focus { border-color: #778357; box-shadow: 0 0 0 4px rgba(201, 255, 74, 0.05); outline: none; }
+.model-toggle { justify-self: start; }
+
 .role-form-actions { display: flex; gap: 12px; align-items: center; }
 .role-form-actions .primary-button { min-width: 180px; }
 

@@ -6,6 +6,7 @@ import {
   getRoleLibrarySettings,
   replaceRole,
   updateDefaultRoleCount,
+  updateSettings,
 } from "../../api";
 import type { RoleDefinition, RoleInput, RoleLibrarySettings } from "../../types";
 
@@ -21,8 +22,10 @@ export function useRoleLibrary() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [countSaving, setCountSaving] = useState(false);
+  const [modelSaving, setModelSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -107,17 +110,33 @@ export function useRoleLibrary() {
     }
   }, []);
 
+  const changeModel = useCallback(async (modelId: string) => {
+    setModelSaving(true);
+    setModelError(null);
+    try {
+      setSettings(await updateSettings({ llm_model: modelId }));
+    } catch (error) {
+      setModelError(errorMessage(error));
+    } finally {
+      setModelSaving(false);
+    }
+  }, []);
+
   return {
     settings,
     loading,
     loadError,
     operationError,
+    modelError,
     saving,
     countSaving,
+    modelSaving,
     refresh,
     saveRole,
     removeRole,
     changeCount,
+    changeModel,
     clearOperationError: () => setOperationError(null),
+    clearModelError: () => setModelError(null),
   };
 }

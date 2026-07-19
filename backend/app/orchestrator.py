@@ -15,7 +15,7 @@ from .client import (
     ProviderTimeout,
 )
 from .config import Settings
-from .models import RoleSpec, RunError, RunStage
+from .models import RoleLibrarySettings, RoleSpec, RunError, RunStage
 from .prompts import (
     advocate_prompt,
     debate_prompt,
@@ -59,28 +59,46 @@ class RunExecutor:
         try:
             record = await self._store.get_record(run_id)
             await self._store.start_stage(run_id, current_stage)
+
+            library_settings: RoleLibrarySettings | None = None
+            if self._role_library is not None:
+                try:
+                    library_settings = await self._role_library.get_settings()
+                except Exception:
+                    logger.exception(
+                        "failed to read role library settings; using environment defaults"
+                    )
+            active_model = (
+                (library_settings.llm_model or self._settings.llm_model)
+                if library_settings
+                else self._settings.llm_model
+            )
+            desired_count = library_settings.default_role_count if library_settings else None
+
             if record.roles:
                 roles = record.roles
                 await self._store.set_roles(run_id, roles)
             else:
-                desired_count = await self._desired_role_count()
                 system, user = role_planner_prompt(
                     record.decision, desired_role_count=desired_count
                 )
                 raw_roles = await self._client.complete(
-                    system, user, self._settings.llm_orchestrator_temperature
+                    system,
+                    user,
+                    self._settings.llm_orchestrator_temperature,
+                    model=active_model,
                 )
                 roles = parse_roles(raw_roles, expected_count=desired_count)
                 await self._store.set_roles(run_id, roles)
 
             current_stage = RunStage.INDEPENDENT_ANALYSIS
             await self._store.start_stage(run_id, current_stage)
-            await self._run_experts(run_id, record.decision, roles)
+            await self._run_experts(run_id, record.decision, roles, active_model)
 
             if record.debate:
                 current_stage = RunStage.DEBATE
                 await self._store.start_stage(run_id, current_stage)
-                await self._run_debate(run_id, record.decision, roles)
+                await self._run_debate(run_id, record.decision, roles, active_model)
 
             snapshot = await self._store.get_record(run_id)
             active_opinions = [
@@ -103,7 +121,10 @@ class RunExecutor:
                 active_opinions=complete_active,
             )
             advocate = await self._client.complete(
-                system, user, self._settings.llm_advocate_temperature
+                system,
+                user,
+                self._settings.llm_advocate_temperature,
+                model=active_model,
             )
             await self._store.set_advocate(run_id, advocate)
 
@@ -116,7 +137,10 @@ class RunExecutor:
                 devils_advocate=advocate,
             )
             synthesis = await self._client.complete(
-                system, user, self._settings.llm_merge_temperature
+                system,
+                user,
+                self._settings.llm_merge_temperature,
+                model=active_model,
             )
             await self._store.set_synthesis(run_id, synthesis)
             await self._store.complete_run(run_id)
@@ -164,17 +188,9 @@ class RunExecutor:
         except Exception as exc:
             return CallResult(index=index, error=exc)
 
-    async def _desired_role_count(self) -> int | None:
-        if self._role_library is None:
-            return None
-        try:
-            settings = await self._role_library.get_settings()
-        except Exception:
-            logger.exception("failed to read role library settings; skipping count hint")
-            return None
-        return settings.default_role_count
-
-    async def _run_experts(self, run_id: UUID, decision: str, roles: list[RoleSpec]) -> None:
+    async def _run_experts(
+        self, run_id: UUID, decision: str, roles: list[RoleSpec], active_model: str
+    ) -> None:
         tasks = []
         for index, role in enumerate(roles):
             system, user = expert_prompt(decision, role)
@@ -182,7 +198,12 @@ class RunExecutor:
                 asyncio.create_task(
                     self._capture(
                         index,
-                        self._client.complete(system, user, self._settings.llm_expert_temperature),
+                        self._client.complete(
+                            system,
+                            user,
+                            self._settings.llm_expert_temperature,
+                            model=active_model,
+                        ),
                     )
                 )
             )
@@ -197,7 +218,9 @@ class RunExecutor:
         if errors:
             raise sorted(errors, key=lambda item: item[0])[0][1]
 
-    async def _run_debate(self, run_id: UUID, decision: str, roles: list[RoleSpec]) -> None:
+    async def _run_debate(
+        self, run_id: UUID, decision: str, roles: list[RoleSpec], active_model: str
+    ) -> None:
         snapshot = await self._store.get_record(run_id)
         initial_by_name = {
             opinion.role.name: opinion.initial_analysis for opinion in snapshot.expert_opinions
@@ -217,7 +240,12 @@ class RunExecutor:
                 asyncio.create_task(
                     self._capture(
                         index,
-                        self._client.complete(system, user, self._settings.llm_debate_temperature),
+                        self._client.complete(
+                            system,
+                            user,
+                            self._settings.llm_debate_temperature,
+                            model=active_model,
+                        ),
                     )
                 )
             )

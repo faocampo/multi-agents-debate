@@ -38,8 +38,15 @@ export interface RoleDefinition {
   prompt: string | null;
 }
 
+export interface LLMModelInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
 export interface RoleLibrarySettings {
   default_role_count: number;
+  llm_model: string | null;
   roles: RoleDefinition[];
 }
 

@@ -10,18 +10,19 @@ A local decision-analysis application that assembles three to five independent e
 - `frontend/e2e/`: Playwright integration workflow.
 - `outputs/ai-swarm-framework-spec.md`: complete product and technical specification.
 
-The backend calls any OpenAI-compatible `/v1/chat/completions` endpoint. The default configuration targets Ollama, whose compatibility API is documented at Ollama, “OpenAI compatibility” ([https://docs.ollama.com/api/openai-compatibility](https://docs.ollama.com/api/openai-compatibility)).
+The backend calls any OpenAI-compatible `/v1/chat/completions` endpoint. The default configuration targets [OpenRouter](https://openrouter.ai/); its model list and Zero Data Retention endpoints are documented in the OpenRouter docs. You can switch to any compatible provider by overriding `LLM_BASE_URL` and `LLM_MODEL` in `.env`.
 
 ## Prerequisites
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
 - A current Node.js LTS release and npm
-- An OpenAI-compatible model provider; the defaults use [Ollama](https://ollama.com/)
+- An OpenAI-compatible model provider; the defaults use [OpenRouter](https://openrouter.ai/)
 
 ## Local setup
 
 ```bash
 cp .env.example .env
+# Edit .env and set LLM_API_KEY to your OpenRouter key
 
 cd backend
 uv sync --all-extras
@@ -65,8 +66,9 @@ The SSE transport follows MDN Web Docs, “Using server-sent events” ([https:/
 
 ## Settings: agent roles library
 
-The **Settings** view (link in the header) lets you manage a reusable library of agent roles:
+The **Settings** view (link in the header) lets you manage the model and a reusable library of agent roles:
 
+- **Language model** — choose the provider model from the OpenRouter `/v1/models` list. Optionally filter to Zero Data Retention (ZDR) endpoints. The selection persists with the role library.
 - **Default number of roles** — a value between 3 and 5 used by the role planner and as the number of library roles selected for a saved panel.
 - **CRUD of agent roles** — create, edit, and delete up to 100 saved roles. Each role has a `name`, `focus`, `bias`, and an optional free-form `prompt` that is forwarded to the expert alongside the role mandate (kept in the untrusted user payload, never as a system prompt).
 - **Use saved roles** — toggle in the composer to ask the backend to snapshot the first *n* saved roles, where *n* is the default count. The toggle remains disabled until the library contains a complete panel.

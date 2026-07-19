@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 
 from app.client import ProviderTimeout
+from app.models import LLMModelInfo
 from app.prompts import (
     ADVOCATE_SYSTEM,
     DEBATE_SYSTEM,
@@ -24,6 +25,7 @@ class CapturedCall:
     system: str
     user: str
     temperature: float
+    model: str | None = None
 
 
 class ScriptedClient:
@@ -31,8 +33,10 @@ class ScriptedClient:
         self.calls: list[CapturedCall] = []
         self.fail_system = fail_system
 
-    async def complete(self, system: str, user: str, temperature: float) -> str:
-        self.calls.append(CapturedCall(system, user, temperature))
+    async def complete(
+        self, system: str, user: str, temperature: float, model: str | None = None
+    ) -> str:
+        self.calls.append(CapturedCall(system, user, temperature, model))
         if self.fail_system is not None and system == self.fail_system:
             raise ProviderTimeout("scripted timeout")
         payload = json.loads(user)
@@ -47,3 +51,12 @@ class ScriptedClient:
         if system == SYNTHESIS_SYSTEM:
             return "## Verdict\n\nRun a reversible pilot."
         raise AssertionError("Unexpected system prompt")
+
+    async def list_models(self, zdr: bool = False) -> list[LLMModelInfo]:
+        models = [
+            LLMModelInfo(id="openai/gpt-4o-mini", name="GPT-4o Mini"),
+            LLMModelInfo(id="test/test-model", name="Test Model"),
+        ]
+        if zdr:
+            return [LLMModelInfo(id="openai/gpt-4o-mini", name="GPT-4o Mini")]
+        return models

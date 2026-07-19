@@ -56,8 +56,9 @@ class RoleLibraryStore:
     serialized through a lock; mutations flush to disk before returning.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, default_llm_model: str | None = None) -> None:
         self._path = path
+        self._default_llm_model = default_llm_model
         self._lock = asyncio.Lock()
         self._settings = RoleLibrarySettings()
         self._loaded = False
@@ -124,23 +125,31 @@ class RoleLibraryStore:
     def _names(roles: list[RoleDefinition]) -> set[str]:
         return {" ".join(role.name.split()).casefold() for role in roles}
 
+    def _effective_settings(self) -> RoleLibrarySettings:
+        settings = copy.deepcopy(self._settings)
+        if not settings.llm_model and self._default_llm_model:
+            settings.llm_model = self._default_llm_model
+        return settings
+
     async def get_settings(self) -> RoleLibrarySettings:
         await self._load()
         async with self._lock:
-            return copy.deepcopy(self._settings)
+            return self._effective_settings()
 
     async def update_settings(
         self, payload: UpdateRoleLibrarySettingsRequest
     ) -> RoleLibrarySettings:
         await self._load()
         async with self._lock:
-            candidate = RoleLibrarySettings(
-                default_role_count=payload.default_role_count,
-                roles=self._settings.roles,
-            )
+            updates: dict[str, Any] = {}
+            if payload.default_role_count is not None:
+                updates["default_role_count"] = payload.default_role_count
+            if payload.llm_model is not None:
+                updates["llm_model"] = payload.llm_model
+            candidate = self._settings.model_copy(update=updates, deep=True)
             await self._persist(candidate)
             self._settings = candidate
-            return copy.deepcopy(candidate)
+            return self._effective_settings()
 
     async def list_roles(self) -> list[RoleDefinition]:
         await self._load()

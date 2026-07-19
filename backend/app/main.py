@@ -10,11 +10,12 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response, st
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .client import HttpxLLMClient, LLMClient
+from .client import HttpxLLMClient, LLMClient, ProviderError
 from .config import Settings
 from .models import (
     CreateRoleRequest,
     CreateRunRequest,
+    LLMModelInfo,
     RoleDefinition,
     RoleLibrarySettings,
     RoleSource,
@@ -46,7 +47,10 @@ def create_app(
 ) -> FastAPI:
     configured_settings = settings or Settings()
     store = RunStore()
-    library = role_library or RoleLibraryStore(configured_settings.roles_file)
+    library = role_library or RoleLibraryStore(
+        configured_settings.roles_file,
+        default_llm_model=configured_settings.llm_model,
+    )
     background_tasks: set[asyncio.Task[None]] = set()
     owned_client: HttpxLLMClient | None = None
 
@@ -58,6 +62,7 @@ def create_app(
         if active_client is None:
             owned_client = HttpxLLMClient(configured_settings)
             active_client = owned_client
+        application.state.llm_client = active_client
         application.state.executor = RunExecutor(
             store,
             active_client,
@@ -173,6 +178,17 @@ def create_app(
         payload: UpdateRoleLibrarySettingsRequest,
     ) -> RoleLibrarySettings:
         return await library.update_settings(payload)
+
+    @application.get("/api/models", response_model=list[LLMModelInfo])
+    async def list_models(zdr: bool = Query(default=False)) -> list[LLMModelInfo]:
+        llm_client: LLMClient = application.state.llm_client
+        try:
+            return await llm_client.list_models(zdr=zdr)
+        except ProviderError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not fetch models from provider",
+            ) from exc
 
     @application.get("/api/settings/roles", response_model=list[RoleDefinition])
     async def list_roles() -> list[RoleDefinition]:

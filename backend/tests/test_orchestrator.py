@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 
 from app.config import Settings
-from app.models import RunEventType, RunStage, RunStatus
+from app.models import RunEventType, RunStage, RunStatus, UpdateRoleLibrarySettingsRequest
 from app.orchestrator import RunExecutor
 from app.prompts import ADVOCATE_SYSTEM, EXPERT_SYSTEM
+from app.role_store import RoleLibraryStore
 from app.store import RunStore
 from tests.fakes import ROLES, ScriptedClient
 
@@ -84,13 +86,15 @@ class BarrierClient(ScriptedClient):
         self.all_started = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def complete(self, system: str, user: str, temperature: float) -> str:
+    async def complete(
+        self, system: str, user: str, temperature: float, model: str | None = None
+    ) -> str:
         if system == EXPERT_SYSTEM:
             self.started += 1
             if self.started == len(ROLES):
                 self.all_started.set()
             await self.release.wait()
-        return await super().complete(system, user, temperature)
+        return await super().complete(system, user, temperature, model)
 
 
 @pytest.mark.asyncio
@@ -106,3 +110,18 @@ async def test_experts_start_in_parallel() -> None:
     assert client.started == len(ROLES)
     client.release.set()
     await task
+
+
+@pytest.mark.asyncio
+async def test_uses_library_selected_model(tmp_path: Path) -> None:
+    library = RoleLibraryStore(tmp_path / "roles.json", default_llm_model="environment-model")
+    await library.update_settings(UpdateRoleLibrarySettingsRequest(llm_model="selected-model"))
+
+    store = RunStore()
+    summary = await store.create_run("Make a consequential decision", False)
+    client = ScriptedClient()
+    await RunExecutor(
+        store, client, Settings(_env_file=None), heartbeat_interval=3600, role_library=library
+    ).run(summary.id)
+
+    assert all(call.model == "selected-model" for call in client.calls)

@@ -26,6 +26,15 @@ def completion(system: str, user: str) -> str:
     raise ValueError("unexpected prompt")
 
 
+MODELS = [
+    {"id": "fake-model", "name": "Fake Model", "architecture": {"modality": "text->text"}}
+]
+
+ZDR_ENDPOINTS = [
+    {"model_id": "fake-model", "model_name": "Fake Model", "name": "Fake: Fake Model"}
+]
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -33,7 +42,21 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"ok")
             return
+        if self.path == "/v1/models":
+            self._json_response({"data": MODELS})
+            return
+        if self.path == "/v1/endpoints/zdr":
+            self._json_response({"data": ZDR_ENDPOINTS})
+            return
         self.send_error(404)
+
+    def _json_response(self, payload: dict[str, object]) -> None:
+        body = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:
         if self.path != "/v1/chat/completions":

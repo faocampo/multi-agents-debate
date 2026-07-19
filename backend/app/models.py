@@ -186,8 +186,36 @@ class CreateRoleRequest(StrictModel):
 
 class RoleLibrarySettings(StrictModel):
     default_role_count: int = Field(default=3, ge=3, le=5)
+    llm_model: str | None = None
     roles: list[RoleDefinition] = Field(default_factory=list, max_length=100)
+
+    @field_validator("llm_model")
+    @classmethod
+    def validate_llm_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class LLMModelInfo(StrictModel):
+    """Public model metadata returned by the provider list endpoint."""
+
+    id: str
+    name: str
+    description: str | None = None
 
 
 class UpdateRoleLibrarySettingsRequest(StrictModel):
-    default_role_count: int = Field(ge=3, le=5)
+    default_role_count: int | None = Field(default=None, ge=3, le=5)
+    llm_model: str | None = None
+
+    @field_validator("llm_model")
+    @classmethod
+    def validate_llm_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("llm_model must not be empty")
+        return normalized

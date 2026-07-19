@@ -20,8 +20,9 @@ def anyio_backend() -> str:
 
 @pytest.fixture
 async def api_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
-    library = RoleLibraryStore(tmp_path / "roles.json")
-    application = create_app(ScriptedClient(), Settings(_env_file=None), role_library=library)
+    settings = Settings(_env_file=None)
+    library = RoleLibraryStore(tmp_path / "roles.json", default_llm_model=settings.llm_model)
+    application = create_app(ScriptedClient(), settings, role_library=library)
     async with application.router.lifespan_context(application):
         transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -101,7 +102,9 @@ async def test_list_limit_validation(api_client: httpx.AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_settings_crud_round_trip(api_client: httpx.AsyncClient) -> None:
     initial = (await api_client.get("/api/settings")).json()
-    assert initial == {"default_role_count": 3, "roles": []}
+    assert initial["default_role_count"] == 3
+    assert initial["llm_model"] == Settings(_env_file=None).llm_model
+    assert initial["roles"] == []
 
     updated = (await api_client.patch("/api/settings", json={"default_role_count": 4})).json()
     assert updated["default_role_count"] == 4
@@ -169,6 +172,26 @@ async def test_role_validation_and_conflicts(api_client: httpx.AsyncClient) -> N
 async def test_settings_count_validation(api_client: httpx.AsyncClient, count: int) -> None:
     response = await api_client.patch("/api/settings", json={"default_role_count": count})
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_llm_model(api_client: httpx.AsyncClient) -> None:
+    updated = (await api_client.patch("/api/settings", json={"llm_model": "openai/gpt-4o"})).json()
+    assert updated["llm_model"] == "openai/gpt-4o"
+
+    empty = await api_client.patch("/api/settings", json={"llm_model": "   "})
+    assert empty.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_models(api_client: httpx.AsyncClient) -> None:
+    models = (await api_client.get("/api/models")).json()
+    assert len(models) >= 1
+    assert all("id" in model and "name" in model for model in models)
+
+    zdr = (await api_client.get("/api/models?zdr=true")).json()
+    assert len(zdr) >= 1
+    assert len(zdr) <= len(models)
 
 
 @pytest.mark.asyncio

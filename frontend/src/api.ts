@@ -1,4 +1,5 @@
 import type {
+  LLMModelInfo,
   RoleDefinition,
   RoleInput,
   RoleLibrarySettings,
@@ -66,11 +67,23 @@ export function getRoleLibrarySettings(): Promise<RoleLibrarySettings> {
   return request("/api/settings");
 }
 
-export function updateDefaultRoleCount(count: number): Promise<RoleLibrarySettings> {
+export function updateSettings(updates: {
+  default_role_count?: number;
+  llm_model?: string;
+}): Promise<RoleLibrarySettings> {
   return request("/api/settings", {
     method: "PATCH",
-    body: JSON.stringify({ default_role_count: count }),
+    body: JSON.stringify(updates),
   });
+}
+
+export function updateDefaultRoleCount(count: number): Promise<RoleLibrarySettings> {
+  return updateSettings({ default_role_count: count });
+}
+
+export function listModels(zdr = false): Promise<LLMModelInfo[]> {
+  const query = zdr ? "?zdr=true" : "";
+  return request(`/api/models${query}`);
 }
 
 export function createRole(input: RoleInput): Promise<RoleDefinition> {
