@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+from app.client import ProviderTimeout
+from app.prompts import (
+    ADVOCATE_SYSTEM,
+    DEBATE_SYSTEM,
+    EXPERT_SYSTEM,
+    ROLE_PLANNER_SYSTEM,
+    SYNTHESIS_SYSTEM,
+)
+
+ROLES = [
+    {"name": "Customer Advocate", "focus": "Adoption", "bias": "Prefer usability"},
+    {"name": "Finance Lead", "focus": "Economics", "bias": "Protect runway"},
+    {"name": "Engineer", "focus": "Delivery risk", "bias": "Prefer reversible systems"},
+]
+
+
+@dataclass(slots=True)
+class CapturedCall:
+    system: str
+    user: str
+    temperature: float
+
+
+class ScriptedClient:
+    def __init__(self, fail_system: str | None = None) -> None:
+        self.calls: list[CapturedCall] = []
+        self.fail_system = fail_system
+
+    async def complete(self, system: str, user: str, temperature: float) -> str:
+        self.calls.append(CapturedCall(system, user, temperature))
+        if self.fail_system is not None and system == self.fail_system:
+            raise ProviderTimeout("scripted timeout")
+        payload = json.loads(user)
+        if system.startswith(ROLE_PLANNER_SYSTEM):
+            return json.dumps(ROLES)
+        if system == EXPERT_SYSTEM:
+            return f"## Recommendation\n\nInitial analysis from {payload['role']['name']}."
+        if system == DEBATE_SYSTEM:
+            return f"## Revised recommendation\n\nRebuttal from {payload['role']['name']}."
+        if system == ADVOCATE_SYSTEM:
+            return "## Shared assumptions under attack\n\nThe plan assumes stable demand."
+        if system == SYNTHESIS_SYSTEM:
+            return "## Verdict\n\nRun a reversible pilot."
+        raise AssertionError("Unexpected system prompt")
