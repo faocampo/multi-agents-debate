@@ -418,7 +418,7 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
 
 .run-title-block { min-width: 0; }
 .run-title-block > .eyebrow { margin-top: 20px; }
-.run-title-block h2 { max-width: 820px; margin: 0; font-size: clamp(23px, 3vw, 37px); line-height: 1.25; letter-spacing: -0.045em; overflow-wrap: anywhere; }
+.run-title-block h2 { max-width: 820px; margin: 0; font-size: clamp(15px, 1.8vw, 20px); line-height: 1.45; letter-spacing: -0.025em; overflow-wrap: anywhere; }
 
 .run-meta-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: var(--muted); font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em; }
 .run-status { padding: 5px 8px; border-radius: 5px; color: #0f1309; background: var(--acid); }
