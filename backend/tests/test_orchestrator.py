@@ -10,7 +10,7 @@ import pytest
 from app.config import Settings
 from app.models import RunEventType, RunStage, RunStatus, UpdateRoleLibrarySettingsRequest
 from app.orchestrator import RunExecutor
-from app.prompts import ADVOCATE_SYSTEM, EXPERT_SYSTEM
+from app.prompts import ADVOCATE_SYSTEM, EXPERT_SYSTEM, ROLE_PLANNER_SYSTEM
 from app.role_store import RoleLibraryStore
 from app.store import RunStore
 from tests.fakes import ROLES, ScriptedClient
@@ -43,6 +43,41 @@ async def test_call_counts_and_terminal_state(debate: bool, expected_calls: int)
     assert terminal is True
     assert events[0].type is RunEventType.RUN_CREATED
     assert events[-1].type is RunEventType.RUN_COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_clarification_pauses_before_role_planning_and_resumes_with_answers() -> None:
+    store = RunStore()
+    summary = await store.create_run("Decide with context", False, clarify=True)
+    client = ScriptedClient()
+    task = asyncio.create_task(
+        RunExecutor(store, client, settings(), heartbeat_interval=3600).run(summary.id)
+    )
+
+    for _ in range(100):
+        record = await store.get_record(summary.id)
+        if record.stage is RunStage.AWAITING_CLARIFICATION:
+            break
+        await asyncio.sleep(0.001)
+    else:
+        raise AssertionError("run did not request clarification")
+
+    assert len([call for call in client.calls if call.system.startswith(ROLE_PLANNER_SYSTEM)]) == 0
+    await store.submit_clarification(
+        summary.id,
+        answers=["A safe pilot", "Customers and operators"],
+        skipped=False,
+    )
+    await task
+
+    record = await store.get_record(summary.id)
+    assert record.status is RunStatus.COMPLETED
+    assert record.clarifying_answers == ["A safe pilot", "Customers and operators"]
+    assert len([call for call in client.calls if call.system.startswith(ROLE_PLANNER_SYSTEM)]) == 1
+    planner_payload = json.loads(
+        next(call.user for call in client.calls if call.system.startswith(ROLE_PLANNER_SYSTEM))
+    )
+    assert planner_payload["clarification"][0]["answer"] == "A safe pilot"
 
 
 @pytest.mark.asyncio

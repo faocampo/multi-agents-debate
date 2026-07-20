@@ -18,6 +18,20 @@ describe("Markdown export", () => {
     expect(markdown.endsWith("\n\n")).toBe(false);
   });
 
+  it("exports answered clarification context before the panel", () => {
+    const markdown = serializeRunToMarkdown({
+      ...completedRun,
+      clarify: true,
+      clarifying_questions: ["What matters most?"],
+      clarifying_answers: ["Safety"],
+    });
+
+    expect(markdown).toContain("## Clarifying Q&A");
+    expect(markdown).toContain("**Q:** What matters most?");
+    expect(markdown).toContain("**A:** Safety");
+    expect(markdown.indexOf("## Clarifying Q&A")).toBeLessThan(markdown.indexOf("## The panel"));
+  });
+
   it("omits debate rebuttals and adds safe failure details", () => {
     const markdown = serializeRunToMarkdown({
       ...completedRun,

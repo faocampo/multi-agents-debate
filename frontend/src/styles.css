@@ -453,6 +453,7 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
   list-style: none;
 }
 
+.stage-timeline.has-clarification { grid-template-columns: repeat(6, 1fr); }
 .stage-timeline li { position: relative; min-width: 0; display: flex; gap: 9px; color: var(--faint); }
 .stage-timeline li:not(:last-child)::after { content: ""; position: absolute; top: 13px; left: 29px; width: calc(100% - 34px); border-top: 1px solid #333a46; z-index: 0; }
 .stage-timeline li.completed:not(:last-child)::after { border-color: #718a42; }
@@ -537,6 +538,13 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
 }
 .expand-button:hover { background: #2a303c; }
 
+.clarification-section { border-color: #465c72; background: radial-gradient(circle at 100% 0, rgba(102, 210, 255, 0.08), transparent 28rem), var(--panel); }
+.clarification-form { display: grid; gap: 14px; }
+.clarification-form h3 { margin: 0; font-size: 21px; }
+.clarification-questions { display: grid; gap: 14px; }
+.clarification-questions label { display: grid; gap: 7px; color: var(--ink); font-size: 14px; font-weight: 700; }
+.clarification-questions textarea { min-height: 78px; padding: 12px; color: var(--ink); border: 1px solid #394653; border-radius: 8px; background: #11161e; resize: vertical; }
+.clarification-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .advocate-section { border-color: #4b352d; background: radial-gradient(circle at 100% 0, rgba(255, 159, 90, 0.07), transparent 28rem), var(--panel); }
 .section-label { display: flex; gap: 16px; align-items: center; margin-bottom: 22px; }
 .section-label > span { width: 43px; height: 43px; display: grid; place-items: center; color: #1b1009; background: var(--orange); border-radius: 50%; font: 700 12px "DM Mono", monospace; }

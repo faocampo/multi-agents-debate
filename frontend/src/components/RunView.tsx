@@ -1,5 +1,6 @@
 import type { RunRecord } from "../types";
 import { downloadRunMarkdown } from "../exportMarkdown";
+import { ClarificationForm } from "./ClarificationForm";
 import { ExpertCard } from "./ExpertCard";
 import { MarkdownSection } from "./MarkdownSection";
 import { StageTimeline } from "./StageTimeline";
@@ -49,6 +50,14 @@ export function RunView({ run, connection }: RunViewProps) {
           </div>
         </section>
       )}
+
+      {run.clarifying_questions.length > 0 &&
+        run.clarifying_answers === null &&
+        !run.clarification_skipped && (
+          <section className="results-section clarification-section" id="clarification">
+            <ClarificationForm runId={run.id} questions={run.clarifying_questions} />
+          </section>
+        )}
 
       <section className="results-section roles-section" id="panel">
         <div className="section-heading">

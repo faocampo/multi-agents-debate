@@ -21,6 +21,7 @@ from .models import (
     RoleSource,
     RunRecord,
     RunSummary,
+    SubmitClarificationRequest,
     UpdateRoleLibrarySettingsRequest,
 )
 from .orchestrator import RunExecutor
@@ -33,7 +34,7 @@ from .role_store import (
     RolePersistenceError,
 )
 from .sse import event_stream
-from .store import RunStore
+from .store import RunStore, StageConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def create_app(
                         f"only {exc.available} are available."
                     ),
                 ) from exc
-        summary = await store.create_run(payload.decision, payload.debate, roles)
+        summary = await store.create_run(payload.decision, payload.debate, roles, payload.clarify)
         response.headers["Location"] = f"/api/runs/{summary.id}"
         executor: RunExecutor = application.state.executor
         task = asyncio.create_task(executor.run(summary.id))
@@ -141,6 +142,24 @@ def create_app(
             return await store.get_record(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Run not found") from exc
+
+    @application.post("/api/runs/{run_id}/clarification", status_code=status.HTTP_204_NO_CONTENT)
+    async def submit_clarification(
+        run_id: UUID, payload: SubmitClarificationRequest
+    ) -> Response:
+        try:
+            await store.submit_clarification(
+                run_id,
+                answers=payload.answers,
+                skipped=payload.skipped,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
+        except StageConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @application.get("/api/runs/{run_id}/events")
     async def stream_events(

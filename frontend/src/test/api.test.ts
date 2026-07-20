@@ -26,7 +26,7 @@ describe("api", () => {
     const request = fetchMock.mock.calls[0];
     expect(request).toBeDefined();
     const body = JSON.parse(request![1]?.body as string) as Record<string, unknown>;
-    expect(body).toEqual({ decision: "Decide", debate: true, role_source: "library" });
+    expect(body).toEqual({ decision: "Decide", debate: true, clarify: false, role_source: "library" });
     expect(body).not.toHaveProperty("roles");
   });
 });

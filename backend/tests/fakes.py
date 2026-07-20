@@ -7,6 +7,7 @@ from app.client import ProviderTimeout
 from app.models import LLMModelInfo
 from app.prompts import (
     ADVOCATE_SYSTEM,
+    CLARIFYING_QUESTIONS_SYSTEM,
     DEBATE_SYSTEM,
     EXPERT_SYSTEM,
     ROLE_PLANNER_SYSTEM,
@@ -40,6 +41,8 @@ class ScriptedClient:
         if self.fail_system is not None and system == self.fail_system:
             raise ProviderTimeout("scripted timeout")
         payload = json.loads(user)
+        if system == CLARIFYING_QUESTIONS_SYSTEM:
+            return json.dumps(["What outcome matters most?", "Who is affected?"])
         if system.startswith(ROLE_PLANNER_SYSTEM):
             return json.dumps(ROLES)
         if system == EXPERT_SYSTEM:

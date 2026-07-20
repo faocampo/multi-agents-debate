@@ -4,6 +4,28 @@ import type { RunEvent } from "../types";
 import { completedRun } from "./fixtures";
 
 describe("applyRunEvent", () => {
+  it("applies clarification request and answer events", () => {
+    const run = { ...completedRun, clarify: true, status: "running" as const, stage: "awaiting_clarification" as const };
+    const requested = applyRunEvent(run, {
+      id: 1,
+      run_id: run.id,
+      type: "clarification.requested",
+      timestamp: "2026-07-19T12:00:01.000Z",
+      data: { questions: ["What matters most?"] },
+    });
+    const answered = applyRunEvent(requested, {
+      id: 2,
+      run_id: run.id,
+      type: "clarification.answered",
+      timestamp: "2026-07-19T12:00:02.000Z",
+      data: { answers: ["Safety"], skipped: false },
+    });
+
+    expect(requested.clarifying_questions).toEqual(["What matters most?"]);
+    expect(answered.clarifying_answers).toEqual(["Safety"]);
+    expect(answered.clarification_skipped).toBe(false);
+  });
+
   it("applies out-of-order expert completion in canonical role order", () => {
     const run = { ...completedRun, status: "running" as const, stage: "independent_analysis" as const, expert_opinions: [] };
     const engineer = completedRun.roles[2]!;

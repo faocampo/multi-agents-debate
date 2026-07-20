@@ -18,12 +18,18 @@ from .config import Settings
 from .models import RoleLibrarySettings, RoleSpec, RunError, RunStage
 from .prompts import (
     advocate_prompt,
+    clarifying_questions_prompt,
     debate_prompt,
     expert_prompt,
     role_planner_prompt,
     synthesis_prompt,
 )
-from .role_parser import MalformedRoles, parse_roles
+from .role_parser import (
+    MalformedClarification,
+    MalformedRoles,
+    parse_clarifying_questions,
+    parse_roles,
+)
 from .role_store import RoleLibraryStore
 from .store import RunStore
 
@@ -58,7 +64,6 @@ class RunExecutor:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(run_id))
         try:
             record = await self._store.get_record(run_id)
-            await self._store.start_stage(run_id, current_stage)
 
             library_settings: RoleLibrarySettings | None = None
             if self._role_library is not None:
@@ -74,13 +79,38 @@ class RunExecutor:
                 else self._settings.llm_model
             )
             desired_count = library_settings.default_role_count if library_settings else None
+            clarification: list[tuple[str, str]] | None = None
 
+            if record.clarify and not record.roles:
+                current_stage = RunStage.AWAITING_CLARIFICATION
+                await self._store.start_stage(run_id, current_stage)
+                system, user = clarifying_questions_prompt(record.decision)
+                raw_questions = await self._client.complete(
+                    system,
+                    user,
+                    self._settings.llm_orchestrator_temperature,
+                    model=active_model,
+                )
+                try:
+                    questions = parse_clarifying_questions(raw_questions)
+                except MalformedClarification:
+                    logger.warning("clarification response was malformed; continuing without it")
+                else:
+                    await self._store.set_clarifying_questions(run_id, questions)
+                    answers, skipped = await self._store.await_clarification(run_id)
+                    if not skipped and answers is not None:
+                        clarification = list(zip(questions, answers, strict=True))
+
+            current_stage = RunStage.PLANNING_ROLES
+            await self._store.start_stage(run_id, current_stage)
             if record.roles:
                 roles = record.roles
                 await self._store.set_roles(run_id, roles)
             else:
                 system, user = role_planner_prompt(
-                    record.decision, desired_role_count=desired_count
+                    record.decision,
+                    desired_role_count=desired_count,
+                    clarification=clarification,
                 )
                 raw_roles = await self._client.complete(
                     system,

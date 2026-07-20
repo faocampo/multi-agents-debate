@@ -18,6 +18,27 @@ class MalformedRoles(ValueError):
     pass
 
 
+class MalformedClarification(ValueError):
+    pass
+
+
+def parse_clarifying_questions(raw: str, *, max_questions: int = 5) -> list[str]:
+    try:
+        decoded: Any = json.loads(raw.strip())
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise MalformedClarification("clarifying questions are not valid JSON") from exc
+    if not isinstance(decoded, list) or not 1 <= len(decoded) <= max_questions:
+        raise MalformedClarification("clarifying questions must contain one to five strings")
+    questions = [item.strip() for item in decoded if isinstance(item, str)]
+    if len(questions) != len(decoded) or any(not question for question in questions):
+        raise MalformedClarification("clarifying questions must be non-empty strings")
+    if len({question.casefold() for question in questions}) != len(questions):
+        raise MalformedClarification("clarifying questions must be unique")
+    if any(len(question) > 500 for question in questions):
+        raise MalformedClarification("clarifying questions must be 500 characters or fewer")
+    return questions
+
+
 def parse_roles(raw: str, *, expected_count: int | None = None) -> list[RoleSpec]:
     candidate = raw.strip()
     if candidate.startswith("```"):

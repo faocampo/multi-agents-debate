@@ -1,6 +1,7 @@
 import type { RunRecord, RunStage } from "../types";
 
 const stages: Array<{ id: RunStage; label: string; short: string; anchor: string | null }> = [
+  { id: "awaiting_clarification", label: "Clarifying questions", short: "Clarify", anchor: "clarification" },
   { id: "planning_roles", label: "Role planning", short: "Plan", anchor: "panel" },
   { id: "independent_analysis", label: "Independent experts", short: "Analyze", anchor: "panel" },
   { id: "debate", label: "Expert debate", short: "Debate", anchor: "panel" },
@@ -11,6 +12,12 @@ const stages: Array<{ id: RunStage; label: string; short: string; anchor: string
 type StageState = "pending" | "active" | "completed" | "skipped" | "failed";
 
 function stateFor(run: RunRecord, stage: RunStage): StageState {
+  if (stage === "awaiting_clarification" && !run.clarify) return "skipped";
+  if (
+    stage === "awaiting_clarification" &&
+    (run.clarifying_answers !== null || run.clarification_skipped)
+  )
+    return "completed";
   if (stage === "debate" && !run.debate) return "skipped";
   if (run.error?.stage === stage) return "failed";
   if (stage === "planning_roles" && run.roles.length > 0) return "completed";
@@ -38,9 +45,10 @@ function scrollToSection(anchor: string) {
 }
 
 export function StageTimeline({ run }: { run: RunRecord }) {
+  const visibleStages = run.clarify ? stages : stages.slice(1);
   return (
-    <ol className="stage-timeline" aria-label="Analysis progress">
-      {stages.map((stage, index) => {
+    <ol className={`stage-timeline ${run.clarify ? "has-clarification" : ""}`} aria-label="Analysis progress">
+      {visibleStages.map((stage, index) => {
         const state = stateFor(run, stage.id);
         const clickable = stage.anchor !== null && state !== "pending";
         return (

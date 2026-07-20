@@ -3,6 +3,7 @@ export type RoleSource = "planned" | "library";
 
 export type RunStage =
   | "queued"
+  | "awaiting_clarification"
   | "planning_roles"
   | "independent_analysis"
   | "debate"
@@ -14,6 +15,8 @@ export type RunStage =
 export type RunEventType =
   | "run.created"
   | "stage.started"
+  | "clarification.requested"
+  | "clarification.answered"
   | "roles.planned"
   | "expert.completed"
   | "debate.completed"
@@ -87,11 +90,15 @@ export interface RunRecord {
   id: string;
   decision: string;
   debate: boolean;
+  clarify: boolean;
   status: RunStatus;
   stage: RunStage;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  clarifying_questions: string[];
+  clarifying_answers: string[] | null;
+  clarification_skipped: boolean;
   roles: RoleSpec[];
   expert_opinions: ExpertOpinion[];
   advocate_analysis: string | null;

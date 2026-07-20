@@ -22,12 +22,17 @@ from .models import (
 )
 
 
+class StageConflictError(Exception):
+    pass
+
+
 @dataclass(slots=True)
 class StoredRun:
     record: RunRecord
     events: list[RunEvent]
     next_event_id: int
     condition: asyncio.Condition
+    clarification_event: asyncio.Event | None = None
 
 
 class RunStore:
@@ -86,7 +91,11 @@ class RunStore:
         return stored
 
     async def create_run(
-        self, decision: str, debate: bool, roles: list[RoleSpec] | None = None
+        self,
+        decision: str,
+        debate: bool,
+        roles: list[RoleSpec] | None = None,
+        clarify: bool = False,
     ) -> RunSummary:
         now = utc_now()
         validated_roles = validate_role_panel(roles) if roles else []
@@ -94,6 +103,7 @@ class RunStore:
             id=uuid4(),
             decision=decision,
             debate=debate,
+            clarify=clarify,
             status=RunStatus.QUEUED,
             stage=RunStage.QUEUED,
             created_at=now,
@@ -140,6 +150,51 @@ class RunStore:
                 {"stage": stage.value},
                 timestamp=now,
             )
+
+    async def set_clarifying_questions(self, run_id: UUID, questions: list[str]) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            if stored.record.stage is not RunStage.AWAITING_CLARIFICATION:
+                raise StageConflictError("run is not awaiting clarification")
+            stored.record.clarifying_questions = copy.deepcopy(questions)
+            stored.clarification_event = asyncio.Event()
+            self._append_event(
+                stored,
+                RunEventType.CLARIFICATION_REQUESTED,
+                {"questions": copy.deepcopy(questions)},
+            )
+
+    async def submit_clarification(
+        self, run_id: UUID, *, answers: list[str], skipped: bool
+    ) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            if stored.record.stage is not RunStage.AWAITING_CLARIFICATION:
+                raise StageConflictError("run is not awaiting clarification")
+            if stored.clarification_event is None or stored.clarification_event.is_set():
+                raise StageConflictError("clarification has already been submitted")
+            if skipped and answers:
+                raise ValueError("skipped clarification must not include answers")
+            if not skipped and len(answers) != len(stored.record.clarifying_questions):
+                raise ValueError("one answer is required for each clarifying question")
+            stored.record.clarifying_answers = copy.deepcopy(answers)
+            stored.record.clarification_skipped = skipped
+            self._append_event(
+                stored,
+                RunEventType.CLARIFICATION_ANSWERED,
+                {"answers": copy.deepcopy(answers), "skipped": skipped},
+            )
+            stored.clarification_event.set()
+
+    async def await_clarification(self, run_id: UUID) -> tuple[list[str] | None, bool]:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            if stored.clarification_event is None:
+                raise StageConflictError("clarification questions are not ready")
+            event = stored.clarification_event
+        await event.wait()
+        async with stored.condition:
+            return copy.deepcopy(stored.record.clarifying_answers), stored.record.clarification_skipped
 
     async def set_roles(self, run_id: UUID, roles: list[RoleSpec]) -> None:
         validated_roles = validate_role_panel(roles)

@@ -37,10 +37,11 @@ describe("App", () => {
     expect(decision).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("defaults expert debate to enabled", async () => {
+  it("defaults expert debate to enabled and clarification to optional", async () => {
     render(<App />);
     await screen.findByText("Your analyses will stay here until the server restarts.");
     expect(screen.getByRole("checkbox", { name: /Include expert debate/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Ask clarifying questions first/i })).not.toBeChecked();
   });
 
   it("refreshes the role library when returning through header navigation", async () => {

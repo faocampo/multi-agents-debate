@@ -24,6 +24,9 @@ StrictText500 = Annotated[
 StrictText2000 = Annotated[
     str, StringConstraints(strip_whitespace=True, strict=True, min_length=1, max_length=2000)
 ]
+ClarificationQuestion = Annotated[
+    str, StringConstraints(strip_whitespace=True, strict=True, min_length=1, max_length=500)
+]
 DecisionText = Annotated[
     str, StringConstraints(strip_whitespace=True, strict=True, min_length=1, max_length=20_000)
 ]
@@ -47,6 +50,7 @@ class RoleSource(StrEnum):
 
 class RunStage(StrEnum):
     QUEUED = "queued"
+    AWAITING_CLARIFICATION = "awaiting_clarification"
     PLANNING_ROLES = "planning_roles"
     INDEPENDENT_ANALYSIS = "independent_analysis"
     DEBATE = "debate"
@@ -59,6 +63,8 @@ class RunStage(StrEnum):
 class RunEventType(StrEnum):
     RUN_CREATED = "run.created"
     STAGE_STARTED = "stage.started"
+    CLARIFICATION_REQUESTED = "clarification.requested"
+    CLARIFICATION_ANSWERED = "clarification.answered"
     ROLES_PLANNED = "roles.planned"
     EXPERT_COMPLETED = "expert.completed"
     DEBATE_COMPLETED = "debate.completed"
@@ -132,11 +138,15 @@ class RunRecord(StrictModel):
     id: UUID
     decision: DecisionText
     debate: bool
+    clarify: bool = False
     status: RunStatus
     stage: RunStage
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    clarifying_questions: list[ClarificationQuestion] = Field(default_factory=list, max_length=5)
+    clarifying_answers: list[StrictText2000] | None = None
+    clarification_skipped: bool = False
     roles: list[RoleSpec] = Field(default_factory=list, max_length=5)
     expert_opinions: list[ExpertOpinion] = Field(default_factory=list, max_length=5)
     advocate_analysis: str | None = None
@@ -155,7 +165,13 @@ class RunEvent(StrictModel):
 class CreateRunRequest(StrictModel):
     decision: DecisionText
     debate: bool = True
+    clarify: bool = False
     role_source: RoleSource = RoleSource.PLANNED
+
+
+class SubmitClarificationRequest(StrictModel):
+    skipped: bool = False
+    answers: list[StrictText2000] = Field(default_factory=list, max_length=5)
 
 
 # --- Role library (Settings) -------------------------------------------------

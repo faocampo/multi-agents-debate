@@ -52,10 +52,21 @@ export function createRun(
   decision: string,
   debate: boolean,
   roleSource: RoleSource = "planned",
+  clarify = false,
 ): Promise<RunSummary> {
   return request("/api/runs", {
     method: "POST",
-    body: JSON.stringify({ decision, debate, role_source: roleSource }),
+    body: JSON.stringify({ decision, debate, clarify, role_source: roleSource }),
+  });
+}
+
+export function submitClarification(
+  runId: string,
+  payload: { skipped: boolean; answers: string[] },
+): Promise<void> {
+  return request(`/api/runs/${runId}/clarification`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

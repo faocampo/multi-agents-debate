@@ -40,6 +40,47 @@ async def wait_for_terminal(client: httpx.AsyncClient, run_id: str) -> dict[str,
 
 
 @pytest.mark.asyncio
+async def test_clarification_endpoint_validates_and_resumes_run(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.post(
+        "/api/runs",
+        json={"decision": "Decide with context", "debate": False, "clarify": True},
+    )
+    assert response.status_code == 202
+    run_id = response.json()["id"]
+
+    for _ in range(100):
+        record = (await api_client.get(f"/api/runs/{run_id}")).json()
+        if record["stage"] == "awaiting_clarification":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("run did not request clarification")
+
+    invalid = await api_client.post(
+        f"/api/runs/{run_id}/clarification",
+        json={"answers": ["Only one answer"]},
+    )
+    assert invalid.status_code == 422
+
+    submitted = await api_client.post(
+        f"/api/runs/{run_id}/clarification",
+        json={"answers": ["A safe pilot", "Customers and operators"]},
+    )
+    assert submitted.status_code == 204
+    duplicate = await api_client.post(
+        f"/api/runs/{run_id}/clarification",
+        json={"answers": ["A safe pilot", "Customers and operators"]},
+    )
+    assert duplicate.status_code == 409
+    record = await wait_for_terminal(api_client, run_id)
+    assert record["clarifying_answers"] == ["A safe pilot", "Customers and operators"]
+
+    stream = await api_client.get(f"/api/runs/{run_id}/events")
+    assert "event: clarification.requested" in stream.text
+    assert "event: clarification.answered" in stream.text
+
+
+@pytest.mark.asyncio
 async def test_create_list_snapshot_and_completed_replay(api_client: httpx.AsyncClient) -> None:
     response = await api_client.post("/api/runs", json={"decision": "  Decide well  "})
 

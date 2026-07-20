@@ -22,6 +22,8 @@ import type {
 const eventNames: RunEvent["type"][] = [
   "run.created",
   "stage.started",
+  "clarification.requested",
+  "clarification.answered",
   "roles.planned",
   "expert.completed",
   "debate.completed",
@@ -49,6 +51,7 @@ export default function App() {
   const [runError, setRunError] = useState<string | null>(null);
   const [decision, setDecision] = useState("");
   const [debate, setDebate] = useState(true);
+  const [clarify, setClarify] = useState(false);
   const [roleLibrary, setRoleLibrary] = useState<RoleLibrarySettings | null>(null);
   const [roleLibraryError, setRoleLibraryError] = useState<string | null>(null);
   const [useSavedRoles, setUseSavedRoles] = useState(false);
@@ -205,7 +208,7 @@ export default function App() {
     setSubmitError(null);
     try {
       const roleSource: RoleSource = useSavedRoles && canUseSavedRoles ? "library" : "planned";
-      const summary = await createRun(decision.trim(), debate, roleSource);
+      const summary = await createRun(decision.trim(), debate, roleSource, clarify && roleSource === "planned");
       setHistory((current) => [summary, ...current.filter((item) => item.id !== summary.id)].slice(0, 20));
       setDecision("");
       await selectRun(summary.id);
@@ -259,6 +262,7 @@ export default function App() {
             <Composer
               decision={decision}
               debate={debate}
+              clarify={clarify}
               submitting={submitting}
               error={submitError}
               useSavedRoles={useSavedRoles}
@@ -267,6 +271,7 @@ export default function App() {
               roleLibraryError={roleLibraryError}
               onDecisionChange={setDecision}
               onDebateChange={setDebate}
+              onClarifyChange={setClarify}
               onUseSavedRolesChange={setUseSavedRoles}
               onOpenSettings={() => setView("settings")}
               onSubmit={submit}

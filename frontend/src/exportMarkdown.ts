@@ -26,9 +26,24 @@ export function serializeRunToMarkdown(run: RunRecord): string {
     `- Status: ${run.status}`,
     `- Debate: ${run.debate ? "Enabled" : "Disabled"}`,
     "",
+  ];
+
+  if (run.clarifying_questions.length > 0 && !run.clarification_skipped) {
+    lines.push("## Clarifying Q&A", "");
+    run.clarifying_questions.forEach((question, index) => {
+      lines.push(
+        `**Q:** ${question}`,
+        "",
+        `**A:** ${run.clarifying_answers?.[index] ?? "Pending."}`,
+        "",
+      );
+    });
+  }
+
+  lines.push(
     "## The panel",
     "",
-  ];
+  );
 
   if (run.roles.length === 0) lines.push("Pending.", "");
   run.roles.forEach((role, index) => {

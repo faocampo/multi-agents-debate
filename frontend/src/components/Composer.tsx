@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 interface ComposerProps {
   decision: string;
   debate: boolean;
+  clarify: boolean;
   submitting: boolean;
   error: string | null;
   useSavedRoles: boolean;
@@ -11,6 +12,7 @@ interface ComposerProps {
   roleLibraryError: string | null;
   onDecisionChange: (value: string) => void;
   onDebateChange: (value: boolean) => void;
+  onClarifyChange: (value: boolean) => void;
   onUseSavedRolesChange: (value: boolean) => void;
   onOpenSettings: () => void;
   onSubmit: () => void;
@@ -19,6 +21,7 @@ interface ComposerProps {
 export function Composer({
   decision,
   debate,
+  clarify,
   submitting,
   error,
   useSavedRoles,
@@ -27,6 +30,7 @@ export function Composer({
   roleLibraryError,
   onDecisionChange,
   onDebateChange,
+  onClarifyChange,
   onUseSavedRolesChange,
   onOpenSettings,
   onSubmit,
@@ -80,12 +84,35 @@ export function Composer({
               <small>Each lens responds to the others before synthesis.</small>
             </span>
           </label>
+          <label className={`debate-toggle ${useSavedRoles ? "disabled" : ""}`}>
+            <input
+              type="checkbox"
+              checked={clarify && !useSavedRoles}
+              disabled={useSavedRoles}
+              onChange={(event) => onClarifyChange(event.target.checked)}
+            />
+            <span className="toggle-track" aria-hidden="true">
+              <span />
+            </span>
+            <span>
+              <strong>Ask clarifying questions first</strong>
+              <small>
+                {useSavedRoles
+                  ? "Available when planning a new panel."
+                  : "Answer a few questions before lenses are designed."}
+              </small>
+            </span>
+          </label>
           <label className={`debate-toggle ${canUseSavedRoles ? "" : "disabled"}`}>
             <input
               type="checkbox"
               checked={useSavedRoles && canUseSavedRoles}
               disabled={!canUseSavedRoles}
-              onChange={(event) => onUseSavedRolesChange(event.target.checked)}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                onUseSavedRolesChange(checked);
+                if (checked) onClarifyChange(false);
+              }}
             />
             <span className="toggle-track" aria-hidden="true">
               <span />

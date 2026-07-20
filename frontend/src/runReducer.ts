@@ -25,6 +25,20 @@ export function applyRunEvent(run: RunRecord, event: RunEvent): RunRecord {
         stage: (event.data as { stage: RunStage }).stage,
         started_at: run.started_at ?? event.timestamp,
       };
+    case "clarification.requested":
+      return {
+        ...run,
+        stage: "awaiting_clarification",
+        clarifying_questions: (event.data as { questions: string[] }).questions,
+      };
+    case "clarification.answered": {
+      const data = event.data as { answers: string[]; skipped: boolean };
+      return {
+        ...run,
+        clarifying_answers: data.answers,
+        clarification_skipped: data.skipped,
+      };
+    }
     case "roles.planned": {
       const roles = (event.data as { roles: RoleSpec[] }).roles;
       return { ...run, roles, expert_opinions: orderOpinions(roles, run.expert_opinions) };

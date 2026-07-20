@@ -5,6 +5,7 @@ import json
 from app.models import RoleSpec
 from app.prompts import (
     advocate_prompt,
+    clarifying_questions_prompt,
     debate_prompt,
     expert_prompt,
     role_planner_prompt,
@@ -21,6 +22,25 @@ def test_role_planner_count_is_a_trusted_system_instruction() -> None:
 
     assert "exactly 4 roles" in system
     assert set(json.loads(user)) == {"decision"}
+
+
+def test_clarification_prompt_requests_questions_for_the_decision() -> None:
+    system, user = clarifying_questions_prompt("Choose a launch date")
+
+    assert "JSON array" in system
+    assert json.loads(user) == {"decision": "Choose a launch date"}
+
+
+def test_role_planner_receives_clarification_answers() -> None:
+    _, user = role_planner_prompt(
+        "Decide",
+        clarification=[("What matters most?", "Safety")],
+    )
+
+    assert json.loads(user) == {
+        "decision": "Decide",
+        "clarification": [{"question": "What matters most?", "answer": "Safety"}],
+    }
 
 
 def test_expert_prompt_contains_only_decision_and_own_role() -> None:

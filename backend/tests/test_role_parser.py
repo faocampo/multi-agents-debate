@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from app.role_parser import MalformedRoles, parse_roles
+from app.role_parser import (
+    MalformedClarification,
+    MalformedRoles,
+    parse_clarifying_questions,
+    parse_roles,
+)
 from tests.fakes import ROLES
 
 
@@ -49,3 +54,31 @@ def test_rejects_names_that_only_differ_by_case_and_whitespace() -> None:
 
     with pytest.raises(MalformedRoles):
         parse_roles(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [json.dumps(["What is the target outcome?", "Who is most affected?"])],
+)
+def test_parse_valid_clarifying_questions(payload: str) -> None:
+    assert parse_clarifying_questions(payload) == [
+        "What is the target outcome?",
+        "Who is most affected?",
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not json",
+        json.dumps([]),
+        json.dumps(["one"] * 6),
+        json.dumps(["", "valid"]),
+        json.dumps(["same", "same"]),
+        json.dumps({"questions": ["one"]}),
+        json.dumps([1, "valid"]),
+    ],
+)
+def test_rejects_malformed_clarifying_questions(payload: str) -> None:
+    with pytest.raises(MalformedClarification):
+        parse_clarifying_questions(payload)
