@@ -26,34 +26,33 @@ export function serializeRunToMarkdown(run: RunRecord): string {
     `- Status: ${run.status}`,
     `- Debate: ${run.debate ? "Enabled" : "Disabled"}`,
     "",
-    "## Expert roles",
+    "## The panel",
     "",
   ];
 
   if (run.roles.length === 0) lines.push("Pending.", "");
   run.roles.forEach((role, index) => {
+    const opinion = opinionFor(run, role.name);
     lines.push(
       `### ${index + 1}. ${role.name}`,
       "",
       `- Focus: ${role.focus}`,
       `- Deliberate bias: ${role.bias}`,
       "",
+      "#### Initial analysis",
+      "",
+      opinion?.initial_analysis ?? "Pending.",
+      "",
     );
+    if (run.debate) {
+      lines.push(
+        "#### Rebuttal",
+        "",
+        opinion?.rebuttal ?? "Pending.",
+        "",
+      );
+    }
   });
-
-  lines.push("## Independent analyses", "");
-  if (run.roles.length === 0) lines.push("Pending.", "");
-  run.roles.forEach((role) => {
-    lines.push(`### ${role.name}`, "", opinionFor(run, role.name)?.initial_analysis ?? "Pending.", "");
-  });
-
-  if (run.debate) {
-    lines.push("## Debate rebuttals", "");
-    if (run.roles.length === 0) lines.push("Pending.", "");
-    run.roles.forEach((role) => {
-      lines.push(`### ${role.name}`, "", opinionFor(run, role.name)?.rebuttal ?? "Pending.", "");
-    });
-  }
 
   lines.push(
     "## Devil's advocate",
@@ -92,4 +91,3 @@ export function downloadRunMarkdown(run: RunRecord): void {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
-

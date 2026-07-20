@@ -50,7 +50,7 @@ export function RunView({ run, connection }: RunViewProps) {
         </section>
       )}
 
-      <section className="results-section roles-section">
+      <section className="results-section roles-section" id="panel">
         <div className="section-heading">
           <div>
             <p className="eyebrow">The panel</p>
@@ -75,7 +75,7 @@ export function RunView({ run, connection }: RunViewProps) {
         )}
       </section>
 
-      <section className="results-section advocate-section">
+      <section className="results-section advocate-section" id="advocate">
         <div className="section-label">
           <span>DA</span>
           <div>
@@ -89,7 +89,7 @@ export function RunView({ run, connection }: RunViewProps) {
         />
       </section>
 
-      <section className="results-section synthesis-section">
+      <section className="results-section synthesis-section" id="synthesis">
         <div className="synthesis-accent" aria-hidden="true">Verdict</div>
         <div className="section-heading">
           <div>
@@ -103,4 +103,3 @@ export function RunView({ run, connection }: RunViewProps) {
     </article>
   );
 }
-

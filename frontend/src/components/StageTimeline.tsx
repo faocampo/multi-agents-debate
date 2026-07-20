@@ -1,11 +1,11 @@
 import type { RunRecord, RunStage } from "../types";
 
-const stages: Array<{ id: RunStage; label: string; short: string }> = [
-  { id: "planning_roles", label: "Role planning", short: "Plan" },
-  { id: "independent_analysis", label: "Independent experts", short: "Analyze" },
-  { id: "debate", label: "Expert debate", short: "Debate" },
-  { id: "devils_advocate", label: "Devil's advocate", short: "Stress-test" },
-  { id: "synthesis", label: "Final synthesis", short: "Synthesize" },
+const stages: Array<{ id: RunStage; label: string; short: string; anchor: string | null }> = [
+  { id: "planning_roles", label: "Role planning", short: "Plan", anchor: "panel" },
+  { id: "independent_analysis", label: "Independent experts", short: "Analyze", anchor: "panel" },
+  { id: "debate", label: "Expert debate", short: "Debate", anchor: "panel" },
+  { id: "devils_advocate", label: "Devil's advocate", short: "Stress-test", anchor: "advocate" },
+  { id: "synthesis", label: "Final synthesis", short: "Synthesize", anchor: "synthesis" },
 ];
 
 type StageState = "pending" | "active" | "completed" | "skipped" | "failed";
@@ -33,13 +33,35 @@ function stateFor(run: RunRecord, stage: RunStage): StageState {
   return "pending";
 }
 
+function scrollToSection(anchor: string) {
+  document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export function StageTimeline({ run }: { run: RunRecord }) {
   return (
     <ol className="stage-timeline" aria-label="Analysis progress">
       {stages.map((stage, index) => {
         const state = stateFor(run, stage.id);
+        const clickable = stage.anchor !== null && state !== "pending";
         return (
-          <li className={state} key={stage.id}>
+          <li
+            className={`${state} ${clickable ? "clickable" : ""}`}
+            key={stage.id}
+            role={clickable ? "button" : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            aria-label={clickable ? `Jump to ${stage.label}` : undefined}
+            onClick={clickable ? () => scrollToSection(stage.anchor!) : undefined}
+            onKeyDown={
+              clickable
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      scrollToSection(stage.anchor!);
+                    }
+                  }
+                : undefined
+            }
+          >
             <span className="stage-marker" aria-hidden="true">
               {state === "completed" ? "✓" : state === "failed" ? "!" : index + 1}
             </span>
@@ -54,4 +76,3 @@ export function StageTimeline({ run }: { run: RunRecord }) {
     </ol>
   );
 }
-

@@ -8,15 +8,17 @@ describe("Markdown export", () => {
 
     expect(markdownFilename(completedRun)).toBe("swarm-analysis-2026-07-19-c60c3906.md");
     expect(markdown).toContain("# AI Swarm Analysis");
-    expect(markdown).toContain("## Independent analyses");
-    expect(markdown).toContain("## Debate rebuttals");
+    expect(markdown).toContain("## The panel");
+    expect(markdown).toContain("### 1. Customer");
+    expect(markdown).toContain("#### Initial analysis");
+    expect(markdown).toContain("#### Rebuttal");
     expect(markdown).toContain("## Devil's advocate");
     expect(markdown).toContain("## Final synthesis");
     expect(markdown.endsWith("\n")).toBe(true);
     expect(markdown.endsWith("\n\n")).toBe(false);
   });
 
-  it("omits debate and adds safe failure details", () => {
+  it("omits debate rebuttals and adds safe failure details", () => {
     const markdown = serializeRunToMarkdown({
       ...completedRun,
       debate: false,
@@ -30,9 +32,8 @@ describe("Markdown export", () => {
       },
     });
 
-    expect(markdown).not.toContain("## Debate rebuttals");
+    expect(markdown).not.toContain("#### Rebuttal");
     expect(markdown).toContain("## Run error");
     expect(markdown).toContain("`provider_timeout`");
   });
 });
-
