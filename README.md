@@ -29,7 +29,7 @@ A local decision-analysis application that assembles three to five independent e
 1. Clone the repository:
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/faocampo/multi-agents-debate.git
    cd multi-agents-debate
    ```
 
