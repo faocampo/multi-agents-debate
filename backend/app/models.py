@@ -30,6 +30,9 @@ ClarificationQuestion = Annotated[
 DecisionText = Annotated[
     str, StringConstraints(strip_whitespace=True, strict=True, min_length=1, max_length=20_000)
 ]
+ChallengeText = Annotated[
+    str, StringConstraints(strip_whitespace=True, strict=True, min_length=1, max_length=5_000)
+]
 
 
 class StrictModel(BaseModel):
@@ -48,6 +51,11 @@ class RoleSource(StrEnum):
     LIBRARY = "library"
 
 
+class ChallengeKind(StrEnum):
+    QUESTION = "question"
+    CHALLENGE = "challenge"
+
+
 class RunStage(StrEnum):
     QUEUED = "queued"
     AWAITING_CLARIFICATION = "awaiting_clarification"
@@ -56,6 +64,11 @@ class RunStage(StrEnum):
     DEBATE = "debate"
     DEVILS_ADVOCATE = "devils_advocate"
     SYNTHESIS = "synthesis"
+    CHALLENGE_RECONSIDERATION = "challenge_reconsideration"
+    CHALLENGE_PEER_DEBATE = "challenge_peer_debate"
+    CHALLENGE_ADVOCATE = "challenge_advocate"
+    CHALLENGE_ADVOCATE_RESPONSE = "challenge_advocate_response"
+    CHALLENGE_SYNTHESIS = "challenge_synthesis"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -70,6 +83,12 @@ class RunEventType(StrEnum):
     DEBATE_COMPLETED = "debate.completed"
     ADVOCATE_COMPLETED = "advocate.completed"
     SYNTHESIS_COMPLETED = "synthesis.completed"
+    CHALLENGE_CREATED = "challenge.created"
+    CHALLENGE_RECONSIDERATION_COMPLETED = "challenge.reconsideration_completed"
+    CHALLENGE_PEER_DEBATE_COMPLETED = "challenge.peer_debate_completed"
+    CHALLENGE_ADVOCATE_COMPLETED = "challenge.advocate_completed"
+    CHALLENGE_ADVOCATE_RESPONSE_COMPLETED = "challenge.advocate_response_completed"
+    CHALLENGE_SYNTHESIS_COMPLETED = "challenge.synthesis_completed"
     RUN_COMPLETED = "run.completed"
     RUN_FAILED = "run.failed"
     HEARTBEAT = "heartbeat"
@@ -97,8 +116,10 @@ class ExpertOpinion(StrictModel):
     initial_completed_at: datetime
     rebuttal: str | None = None
     rebuttal_completed_at: datetime | None = None
+    advocate_response: str | None = None
+    advocate_response_completed_at: datetime | None = None
 
-    @field_validator("initial_analysis", "rebuttal")
+    @field_validator("initial_analysis", "rebuttal", "advocate_response")
     @classmethod
     def validate_model_output(cls, value: str | None) -> str | None:
         if value is None:
@@ -132,6 +153,16 @@ class RunSummary(StrictModel):
     role_count: int = Field(ge=0, le=5)
     created_at: datetime
     completed_at: datetime | None = None
+    root_run_id: UUID | None = None
+    parent_run_id: UUID | None = None
+
+
+class ChallengeMetadata(StrictModel):
+    kind: ChallengeKind
+    input: ChallengeText
+    parent_run_id: UUID
+    root_run_id: UUID
+    parent_conclusion: str
 
 
 class RunRecord(StrictModel):
@@ -152,6 +183,9 @@ class RunRecord(StrictModel):
     advocate_analysis: str | None = None
     synthesis: str | None = None
     error: RunError | None = None
+    root_run_id: UUID | None = None
+    parent_run_id: UUID | None = None
+    challenge: ChallengeMetadata | None = None
 
 
 class RunEvent(StrictModel):
@@ -172,6 +206,11 @@ class CreateRunRequest(StrictModel):
 class SubmitClarificationRequest(StrictModel):
     skipped: bool = False
     answers: list[StrictText2000] = Field(default_factory=list, max_length=5)
+
+
+class CreateChallengeRequest(StrictModel):
+    kind: ChallengeKind = ChallengeKind.CHALLENGE
+    input: ChallengeText
 
 
 # --- Role library (Settings) -------------------------------------------------

@@ -15,9 +15,14 @@ from .client import (
     ProviderTimeout,
 )
 from .config import Settings
-from .models import RoleLibrarySettings, RoleSpec, RunError, RunStage
+from .models import RoleLibrarySettings, RoleSpec, RunError, RunRecord, RunStage
 from .prompts import (
     advocate_prompt,
+    challenge_advocate_prompt,
+    challenge_advocate_response_prompt,
+    challenge_peer_debate_prompt,
+    challenge_reconsideration_prompt,
+    challenge_synthesis_prompt,
     clarifying_questions_prompt,
     debate_prompt,
     expert_prompt,
@@ -80,6 +85,11 @@ class RunExecutor:
             )
             desired_count = library_settings.default_role_count if library_settings else None
             clarification: list[tuple[str, str]] | None = None
+
+            if record.challenge is not None:
+                await self._run_challenge(run_id, record, active_model)
+                await self._store.complete_run(run_id)
+                return
 
             if record.clarify and not record.roles:
                 current_stage = RunStage.AWAITING_CLARIFICATION
@@ -287,6 +297,287 @@ class RunExecutor:
                 errors.append((result.index, result.error))
             elif result.output is not None:
                 await self._store.set_rebuttal(run_id, roles[result.index].name, result.output)
+        if errors:
+            raise sorted(errors, key=lambda item: item[0])[0][1]
+
+    async def _run_challenge(
+        self, run_id: UUID, record: RunRecord, active_model: str
+    ) -> None:
+        current_stage = RunStage.CHALLENGE_RECONSIDERATION
+        try:
+            if record.challenge is None:
+                raise ProviderProtocolError("challenge metadata is missing")
+            roles = record.roles
+            if not roles:
+                raise ProviderProtocolError("challenge role panel is missing")
+
+            parent = await self._store.get_record(record.challenge.parent_run_id)
+            previous_by_name = {
+                opinion.role.name: (
+                    opinion.advocate_response
+                    or opinion.rebuttal
+                    or opinion.initial_analysis
+                )
+                for opinion in parent.expert_opinions
+            }
+            if any(role.name not in previous_by_name for role in roles):
+                raise ProviderProtocolError("parent role positions are incomplete")
+
+            challenge_kind = record.challenge.kind.value
+            challenge_input = record.challenge.input
+            parent_conclusion = record.challenge.parent_conclusion
+
+            await self._store.start_stage(run_id, current_stage)
+            await self._run_challenge_reconsideration(
+                run_id,
+                record.decision,
+                roles,
+                previous_by_name,
+                active_model,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+            )
+
+            current_stage = RunStage.CHALLENGE_PEER_DEBATE
+            await self._store.start_stage(run_id, current_stage)
+            await self._run_challenge_peer_debate(
+                run_id,
+                record.decision,
+                roles,
+                active_model,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+            )
+
+            snapshot = await self._store.get_record(run_id)
+            active_opinions = [
+                (opinion.role, opinion.rebuttal)
+                for opinion in snapshot.expert_opinions
+            ]
+            if any(analysis is None for _, analysis in active_opinions):
+                raise ProviderProtocolError("challenge peer debate output is missing")
+            complete_active = [(role, analysis) for role, analysis in active_opinions if analysis]
+
+            current_stage = RunStage.CHALLENGE_ADVOCATE
+            await self._store.start_stage(run_id, current_stage)
+            system, user = challenge_advocate_prompt(
+                record.decision,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+                active_opinions=complete_active,
+            )
+            advocate = await self._client.complete(
+                system,
+                user,
+                self._settings.llm_advocate_temperature,
+                model=active_model,
+            )
+            await self._store.set_challenge_advocate(run_id, advocate)
+
+            current_stage = RunStage.CHALLENGE_ADVOCATE_RESPONSE
+            await self._store.start_stage(run_id, current_stage)
+            await self._run_challenge_advocate_responses(
+                run_id,
+                record.decision,
+                roles,
+                advocate,
+                active_model,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+            )
+
+            snapshot = await self._store.get_record(run_id)
+            final_positions = [
+                (opinion.role, opinion.advocate_response)
+                for opinion in snapshot.expert_opinions
+            ]
+            if any(analysis is None for _, analysis in final_positions):
+                raise ProviderProtocolError("challenge advocate response is missing")
+            complete_final = [(role, analysis) for role, analysis in final_positions if analysis]
+
+            current_stage = RunStage.CHALLENGE_SYNTHESIS
+            await self._store.start_stage(run_id, current_stage)
+            system, user = challenge_synthesis_prompt(
+                record.decision,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+                active_opinions=complete_final,
+                devils_advocate=advocate,
+            )
+            synthesis = await self._client.complete(
+                system,
+                user,
+                self._settings.llm_merge_temperature,
+                model=active_model,
+            )
+            await self._store.set_challenge_synthesis(run_id, synthesis)
+        except ProviderError as exc:
+            await self._store.fail_run(run_id, self._provider_error(current_stage, exc))
+            raise
+
+    async def _run_challenge_reconsideration(
+        self,
+        run_id: UUID,
+        decision: str,
+        roles: list[RoleSpec],
+        previous_by_name: dict[str, str],
+        active_model: str,
+        *,
+        challenge_kind: str,
+        challenge_input: str,
+        parent_conclusion: str,
+    ) -> None:
+        tasks = []
+        for index, role in enumerate(roles):
+            system, user = challenge_reconsideration_prompt(
+                decision,
+                role,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+                previous_position=previous_by_name[role.name],
+            )
+            tasks.append(
+                asyncio.create_task(
+                    self._capture(
+                        index,
+                        self._client.complete(
+                            system,
+                            user,
+                            self._settings.llm_expert_temperature,
+                            model=active_model,
+                        ),
+                    )
+                )
+            )
+
+        errors: list[tuple[int, Exception]] = []
+        for completed in asyncio.as_completed(tasks):
+            result = await completed
+            if result.error is not None:
+                errors.append((result.index, result.error))
+            elif result.output is not None:
+                await self._store.set_challenge_reconsideration(
+                    run_id, roles[result.index], result.output
+                )
+        if errors:
+            raise sorted(errors, key=lambda item: item[0])[0][1]
+
+    async def _run_challenge_peer_debate(
+        self,
+        run_id: UUID,
+        decision: str,
+        roles: list[RoleSpec],
+        active_model: str,
+        *,
+        challenge_kind: str,
+        challenge_input: str,
+        parent_conclusion: str,
+    ) -> None:
+        snapshot = await self._store.get_record(run_id)
+        reconsidered_by_name = {
+            opinion.role.name: opinion.initial_analysis for opinion in snapshot.expert_opinions
+        }
+        tasks = []
+        for index, role in enumerate(roles):
+            opposing = [
+                (other, reconsidered_by_name[other.name])
+                for other in roles
+                if other.name != role.name
+            ]
+            system, user = challenge_peer_debate_prompt(
+                decision,
+                role,
+                reconsidered_by_name[role.name],
+                opposing,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+            )
+            tasks.append(
+                asyncio.create_task(
+                    self._capture(
+                        index,
+                        self._client.complete(
+                            system,
+                            user,
+                            self._settings.llm_debate_temperature,
+                            model=active_model,
+                        ),
+                    )
+                )
+            )
+
+        errors: list[tuple[int, Exception]] = []
+        for completed in asyncio.as_completed(tasks):
+            result = await completed
+            if result.error is not None:
+                errors.append((result.index, result.error))
+            elif result.output is not None:
+                await self._store.set_challenge_peer_response(
+                    run_id, roles[result.index].name, result.output
+                )
+        if errors:
+            raise sorted(errors, key=lambda item: item[0])[0][1]
+
+    async def _run_challenge_advocate_responses(
+        self,
+        run_id: UUID,
+        decision: str,
+        roles: list[RoleSpec],
+        advocate: str,
+        active_model: str,
+        *,
+        challenge_kind: str,
+        challenge_input: str,
+        parent_conclusion: str,
+    ) -> None:
+        snapshot = await self._store.get_record(run_id)
+        active_by_name = {
+            opinion.role.name: opinion.rebuttal for opinion in snapshot.expert_opinions
+        }
+        tasks = []
+        for index, role in enumerate(roles):
+            active_position = active_by_name[role.name]
+            if active_position is None:
+                raise ProviderProtocolError("challenge peer debate output is missing")
+            system, user = challenge_advocate_response_prompt(
+                decision,
+                role,
+                active_position,
+                advocate,
+                challenge_kind=challenge_kind,
+                challenge_input=challenge_input,
+                parent_conclusion=parent_conclusion,
+            )
+            tasks.append(
+                asyncio.create_task(
+                    self._capture(
+                        index,
+                        self._client.complete(
+                            system,
+                            user,
+                            self._settings.llm_debate_temperature,
+                            model=active_model,
+                        ),
+                    )
+                )
+            )
+
+        errors: list[tuple[int, Exception]] = []
+        for completed in asyncio.as_completed(tasks):
+            result = await completed
+            if result.error is not None:
+                errors.append((result.index, result.error))
+            elif result.output is not None:
+                await self._store.set_challenge_advocate_response(
+                    run_id, roles[result.index].name, result.output
+                )
         if errors:
             raise sorted(errors, key=lambda item: item[0])[0][1]
 

@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import type { RunRecord } from "../types";
 import { downloadRunMarkdown } from "../exportMarkdown";
 import { ClarificationForm } from "./ClarificationForm";
@@ -8,6 +9,9 @@ import { StageTimeline } from "./StageTimeline";
 interface RunViewProps {
   run: RunRecord;
   connection: "closed" | "connecting" | "live" | "reconnecting" | "disconnected";
+  challengeSubmitting: boolean;
+  challengeError: string | null;
+  onChallenge: (kind: "question" | "challenge", input: string) => void | Promise<void>;
 }
 
 function formatDate(timestamp: string): string {
@@ -17,20 +21,43 @@ function formatDate(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
-export function RunView({ run, connection }: RunViewProps) {
+export function RunView({
+  run,
+  connection,
+  challengeSubmitting,
+  challengeError,
+  onChallenge,
+}: RunViewProps) {
   const live = run.status === "queued" || run.status === "running";
+  const [challengeKind, setChallengeKind] = useState<"question" | "challenge">("challenge");
+  const [challengeInput, setChallengeInput] = useState("");
+
+  async function submitChallenge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = challengeInput.trim();
+    if (!trimmed || challengeSubmitting) return;
+    await onChallenge(challengeKind, trimmed);
+    setChallengeInput("");
+  }
+
   return (
     <article className="run-view">
       <header className="run-header">
         <div className="run-title-block">
           <div className="run-meta-row">
             <span className={`run-status ${run.status}`}>{run.status}</span>
+            {run.challenge && <span>Challenge run</span>}
             <span>{run.debate ? "Debate enabled" : "Direct synthesis"}</span>
             <time dateTime={run.created_at}>{formatDate(run.created_at)}</time>
             {live && <span className={`connection ${connection}`}>{connection}</span>}
           </div>
           <p className="eyebrow">Decision under analysis</p>
           <h2>{run.decision}</h2>
+          {run.challenge && (
+            <p className="challenge-summary">
+              {run.challenge.kind === "question" ? "Question" : "Challenge"}: {run.challenge.input}
+            </p>
+          )}
         </div>
         <button className="secondary-button" type="button" onClick={() => downloadRunMarkdown(run)}>
           Download .md <span aria-hidden="true">↓</span>
@@ -38,6 +65,19 @@ export function RunView({ run, connection }: RunViewProps) {
       </header>
 
       <StageTimeline run={run} />
+
+      {run.challenge && (
+        <section className="results-section challenge-context">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Reopened conclusion</p>
+              <h2>Parent conclusion under review</h2>
+            </div>
+            <p>Run lineage: {run.root_run_id?.slice(0, 8)} -&gt; {run.parent_run_id?.slice(0, 8)}</p>
+          </div>
+          <MarkdownSection content={run.challenge.parent_conclusion} />
+        </section>
+      )}
 
       {run.error && (
         <section className="run-error" role="alert">
@@ -77,6 +117,7 @@ export function RunView({ run, connection }: RunViewProps) {
                 role={role}
                 opinion={run.expert_opinions.find((item) => item.role.name === role.name)}
                 debate={run.debate}
+                challenge={run.challenge !== null}
                 index={index}
               />
             ))}
@@ -109,6 +150,54 @@ export function RunView({ run, connection }: RunViewProps) {
         </div>
         <MarkdownSection content={run.synthesis} pendingLabel="The panel has not reached synthesis yet…" />
       </section>
+
+      {run.status === "completed" && run.synthesis && (
+        <section className="results-section challenge-section" id="challenge">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Reopen the debate</p>
+              <h2>Challenge this conclusion</h2>
+            </div>
+            <p>The same role panel will reconsider the conclusion and produce a new child run.</p>
+          </div>
+          <form className="challenge-form" onSubmit={submitChallenge}>
+            <div className="segmented-control" aria-label="Challenge type">
+              <button
+                type="button"
+                className={challengeKind === "challenge" ? "active" : ""}
+                onClick={() => setChallengeKind("challenge")}
+              >
+                Challenge
+              </button>
+              <button
+                type="button"
+                className={challengeKind === "question" ? "active" : ""}
+                onClick={() => setChallengeKind("question")}
+              >
+                Question
+              </button>
+            </div>
+            <label>
+              <span>{challengeKind === "question" ? "Question" : "Challenge"}</span>
+              <textarea
+                value={challengeInput}
+                onChange={(event) => setChallengeInput(event.target.value)}
+                maxLength={5000}
+                rows={4}
+                placeholder="What should the panel reconsider?"
+              />
+            </label>
+            {challengeError && <p className="inline-error" role="alert">{challengeError}</p>}
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={!challengeInput.trim() || challengeSubmitting}
+            >
+              {challengeSubmitting ? "Reopening…" : "Recreate debate"}
+            </button>
+          </form>
+        </section>
+      )}
     </article>
   );
 }

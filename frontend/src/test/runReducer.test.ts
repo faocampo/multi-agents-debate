@@ -46,6 +46,8 @@ describe("applyRunEvent", () => {
           initial_completed_at: baseEvent.timestamp,
           rebuttal: null,
           rebuttal_completed_at: null,
+          advocate_response: null,
+          advocate_response_completed_at: null,
         },
       },
     });
@@ -59,6 +61,8 @@ describe("applyRunEvent", () => {
           initial_completed_at: baseEvent.timestamp,
           rebuttal: null,
           rebuttal_completed_at: null,
+          advocate_response: null,
+          advocate_response_completed_at: null,
         },
       },
     });
@@ -91,6 +95,8 @@ describe("applyRunEvent", () => {
           role_count: 3,
           created_at: completedRun.created_at,
           completed_at: "2026-07-19T12:00:50.000Z",
+          root_run_id: null,
+          parent_run_id: null,
         },
       },
     };
@@ -100,5 +106,64 @@ describe("applyRunEvent", () => {
     expect(result.expert_opinions).toEqual(completedRun.expert_opinions);
     expect(result.error?.stage).toBe("synthesis");
   });
-});
 
+  it("applies challenge events to the child run", () => {
+    const run = {
+      ...completedRun,
+      status: "running" as const,
+      stage: "challenge_reconsideration" as const,
+      expert_opinions: [],
+      challenge: {
+        kind: "challenge" as const,
+        input: "What if demand is lower?",
+        parent_run_id: completedRun.id,
+        root_run_id: completedRun.id,
+        parent_conclusion: completedRun.synthesis!,
+      },
+    };
+    const role = completedRun.roles[0]!;
+    const reconsidered = applyRunEvent(run, {
+      id: 10,
+      run_id: run.id,
+      type: "challenge.reconsideration_completed",
+      timestamp: "2026-07-19T12:02:10.000Z",
+      data: {
+        opinion: {
+          role,
+          initial_analysis: "Reconsidered",
+          initial_completed_at: "2026-07-19T12:02:10.000Z",
+          rebuttal: null,
+          rebuttal_completed_at: null,
+          advocate_response: null,
+          advocate_response_completed_at: null,
+        },
+      },
+    });
+    const debated = applyRunEvent(reconsidered, {
+      id: 11,
+      run_id: run.id,
+      type: "challenge.peer_debate_completed",
+      timestamp: "2026-07-19T12:02:20.000Z",
+      data: {
+        role_name: role.name,
+        response: "Peer debate response",
+        completed_at: "2026-07-19T12:02:20.000Z",
+      },
+    });
+    const answered = applyRunEvent(debated, {
+      id: 12,
+      run_id: run.id,
+      type: "challenge.advocate_response_completed",
+      timestamp: "2026-07-19T12:02:30.000Z",
+      data: {
+        role_name: role.name,
+        response: "Advocate answer",
+        completed_at: "2026-07-19T12:02:30.000Z",
+      },
+    });
+
+    expect(answered.expert_opinions[0]?.initial_analysis).toBe("Reconsidered");
+    expect(answered.expert_opinions[0]?.rebuttal).toBe("Peer debate response");
+    expect(answered.expert_opinions[0]?.advocate_response).toBe("Advocate answer");
+  });
+});

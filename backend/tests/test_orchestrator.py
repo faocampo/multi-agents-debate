@@ -10,7 +10,16 @@ import pytest
 from app.config import Settings
 from app.models import RunEventType, RunStage, RunStatus, UpdateRoleLibrarySettingsRequest
 from app.orchestrator import RunExecutor
-from app.prompts import ADVOCATE_SYSTEM, EXPERT_SYSTEM, ROLE_PLANNER_SYSTEM
+from app.prompts import (
+    ADVOCATE_SYSTEM,
+    CHALLENGE_ADVOCATE_RESPONSE_SYSTEM,
+    CHALLENGE_ADVOCATE_SYSTEM,
+    CHALLENGE_PEER_DEBATE_SYSTEM,
+    CHALLENGE_RECONSIDERATION_SYSTEM,
+    CHALLENGE_SYNTHESIS_SYSTEM,
+    EXPERT_SYSTEM,
+    ROLE_PLANNER_SYSTEM,
+)
 from app.role_store import RoleLibraryStore
 from app.store import RunStore
 from tests.fakes import ROLES, ScriptedClient
@@ -96,6 +105,54 @@ async def test_first_round_is_independent_and_merge_uses_rebuttals() -> None:
         item["analysis"].startswith("## Revised recommendation")
         for item in advocate_payload["active_opinions"]
     )
+
+
+@pytest.mark.asyncio
+async def test_challenge_reuses_roles_and_runs_full_challenge_pipeline() -> None:
+    store, parent_id, parent_client = await execute(True)
+    child_summary = await store.create_challenge_run(
+        parent_id,
+        kind="challenge",
+        challenge_input="What if the implementation risk is higher?",
+    )
+    child_client = ScriptedClient()
+
+    await RunExecutor(store, child_client, settings(), heartbeat_interval=3600).run(child_summary.id)
+
+    child = await store.get_record(child_summary.id)
+    assert child.status is RunStatus.COMPLETED
+    assert [role.name for role in child.roles] == [role["name"] for role in ROLES]
+    assert len(child_client.calls) == 11
+    assert not any(call.system.startswith(ROLE_PLANNER_SYSTEM) for call in child_client.calls)
+    assert len([call for call in child_client.calls if call.system == CHALLENGE_RECONSIDERATION_SYSTEM]) == 3
+    assert len([call for call in child_client.calls if call.system == CHALLENGE_PEER_DEBATE_SYSTEM]) == 3
+    assert len([call for call in child_client.calls if call.system == CHALLENGE_ADVOCATE_SYSTEM]) == 1
+    assert len([call for call in child_client.calls if call.system == CHALLENGE_ADVOCATE_RESPONSE_SYSTEM]) == 3
+    assert len([call for call in child_client.calls if call.system == CHALLENGE_SYNTHESIS_SYSTEM]) == 1
+    assert all(opinion.advocate_response for opinion in child.expert_opinions)
+    assert child.challenge is not None
+    assert child.challenge.parent_conclusion == (await store.get_record(parent_id)).synthesis
+    assert len(parent_client.calls) == 9
+
+
+@pytest.mark.asyncio
+async def test_challenge_failure_reports_active_challenge_stage() -> None:
+    store, parent_id, _ = await execute(True)
+    child_summary = await store.create_challenge_run(
+        parent_id,
+        kind="challenge",
+        challenge_input="What if the implementation risk is higher?",
+    )
+    client = ScriptedClient(fail_system=CHALLENGE_ADVOCATE_RESPONSE_SYSTEM)
+
+    await RunExecutor(store, client, settings(), heartbeat_interval=3600).run(child_summary.id)
+
+    child = await store.get_record(child_summary.id)
+    assert child.status is RunStatus.FAILED
+    assert child.error is not None
+    assert child.error.stage is RunStage.CHALLENGE_ADVOCATE_RESPONSE
+    assert all(opinion.rebuttal for opinion in child.expert_opinions)
+    assert child.synthesis is None
 
 
 @pytest.mark.asyncio

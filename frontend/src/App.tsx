@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  createChallenge,
   createRun,
   getRoleLibrarySettings,
   getRun,
@@ -29,6 +30,12 @@ const eventNames: RunEvent["type"][] = [
   "debate.completed",
   "advocate.completed",
   "synthesis.completed",
+  "challenge.created",
+  "challenge.reconsideration_completed",
+  "challenge.peer_debate_completed",
+  "challenge.advocate_completed",
+  "challenge.advocate_response_completed",
+  "challenge.synthesis_completed",
   "run.completed",
   "run.failed",
   "heartbeat",
@@ -57,6 +64,8 @@ export default function App() {
   const [useSavedRoles, setUseSavedRoles] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [challengeSubmitting, setChallengeSubmitting] = useState(false);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("closed");
   const sourceRef = useRef<EventSource | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -107,6 +116,7 @@ export default function App() {
     setConnection("closed");
     setRunLoading(true);
     setRunError(null);
+    setChallengeError(null);
     appliedEventsRef.current = new Set();
     try {
       const run = await getRun(runId);
@@ -219,6 +229,21 @@ export default function App() {
     }
   }
 
+  async function submitChallenge(kind: "question" | "challenge", input: string) {
+    if (!selectedRun) return;
+    setChallengeSubmitting(true);
+    setChallengeError(null);
+    try {
+      const summary = await createChallenge(selectedRun.id, kind, input.trim());
+      setHistory((current) => [summary, ...current.filter((item) => item.id !== summary.id)].slice(0, 20));
+      await selectRun(summary.id);
+    } catch (error) {
+      setChallengeError(errorMessage(error));
+    } finally {
+      setChallengeSubmitting(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -301,7 +326,15 @@ export default function App() {
                     <p>Describe a decision above to start an independent multi-angle analysis.</p>
                   </div>
                 )}
-                {selectedRun && <RunView run={selectedRun} connection={connection} />}
+                {selectedRun && (
+                  <RunView
+                    run={selectedRun}
+                    connection={connection}
+                    challengeSubmitting={challengeSubmitting}
+                    challengeError={challengeError}
+                    onChallenge={submitChallenge}
+                  />
+                )}
               </section>
             </div>
           </>

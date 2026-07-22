@@ -1,5 +1,6 @@
 export type RunStatus = "queued" | "running" | "completed" | "failed";
 export type RoleSource = "planned" | "library";
+export type ChallengeKind = "question" | "challenge";
 
 export type RunStage =
   | "queued"
@@ -9,6 +10,11 @@ export type RunStage =
   | "debate"
   | "devils_advocate"
   | "synthesis"
+  | "challenge_reconsideration"
+  | "challenge_peer_debate"
+  | "challenge_advocate"
+  | "challenge_advocate_response"
+  | "challenge_synthesis"
   | "completed"
   | "failed";
 
@@ -22,6 +28,12 @@ export type RunEventType =
   | "debate.completed"
   | "advocate.completed"
   | "synthesis.completed"
+  | "challenge.created"
+  | "challenge.reconsideration_completed"
+  | "challenge.peer_debate_completed"
+  | "challenge.advocate_completed"
+  | "challenge.advocate_response_completed"
+  | "challenge.synthesis_completed"
   | "run.completed"
   | "run.failed"
   | "heartbeat";
@@ -66,6 +78,8 @@ export interface ExpertOpinion {
   initial_completed_at: string;
   rebuttal: string | null;
   rebuttal_completed_at: string | null;
+  advocate_response: string | null;
+  advocate_response_completed_at: string | null;
 }
 
 export interface RunError {
@@ -84,6 +98,16 @@ export interface RunSummary {
   role_count: number;
   created_at: string;
   completed_at: string | null;
+  root_run_id: string | null;
+  parent_run_id: string | null;
+}
+
+export interface ChallengeMetadata {
+  kind: ChallengeKind;
+  input: string;
+  parent_run_id: string;
+  root_run_id: string;
+  parent_conclusion: string;
 }
 
 export interface RunRecord {
@@ -104,6 +128,9 @@ export interface RunRecord {
   advocate_analysis: string | null;
   synthesis: string | null;
   error: RunError | null;
+  root_run_id: string | null;
+  parent_run_id: string | null;
+  challenge: ChallengeMetadata | null;
 }
 
 export interface RunEvent<T = Record<string, unknown>> {
@@ -113,4 +140,3 @@ export interface RunEvent<T = Record<string, unknown>> {
   timestamp: string;
   data: T;
 }
-

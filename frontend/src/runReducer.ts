@@ -51,6 +51,14 @@ export function applyRunEvent(run: RunRecord, event: RunEvent): RunRecord {
       opinions.push(next);
       return { ...run, expert_opinions: orderOpinions(run.roles, opinions) };
     }
+    case "challenge.reconsideration_completed": {
+      const next = (event.data as { opinion: ExpertOpinion }).opinion;
+      const opinions = run.expert_opinions.filter(
+        (opinion) => opinion.role.name !== next.role.name,
+      );
+      opinions.push(next);
+      return { ...run, expert_opinions: orderOpinions(run.roles, opinions) };
+    }
     case "debate.completed": {
       const data = event.data as {
         role_name: string;
@@ -65,6 +73,25 @@ export function applyRunEvent(run: RunRecord, event: RunEvent): RunRecord {
                 ...opinion,
                 rebuttal: data.rebuttal,
                 rebuttal_completed_at: data.completed_at,
+          }
+            : opinion,
+        ),
+      };
+    }
+    case "challenge.peer_debate_completed": {
+      const data = event.data as {
+        role_name: string;
+        response: string;
+        completed_at: string;
+      };
+      return {
+        ...run,
+        expert_opinions: run.expert_opinions.map((opinion) =>
+          opinion.role.name === data.role_name
+            ? {
+                ...opinion,
+                rebuttal: data.response,
+                rebuttal_completed_at: data.completed_at,
               }
             : opinion,
         ),
@@ -72,7 +99,30 @@ export function applyRunEvent(run: RunRecord, event: RunEvent): RunRecord {
     }
     case "advocate.completed":
       return { ...run, advocate_analysis: (event.data as { analysis: string }).analysis };
+    case "challenge.advocate_completed":
+      return { ...run, advocate_analysis: (event.data as { analysis: string }).analysis };
+    case "challenge.advocate_response_completed": {
+      const data = event.data as {
+        role_name: string;
+        response: string;
+        completed_at: string;
+      };
+      return {
+        ...run,
+        expert_opinions: run.expert_opinions.map((opinion) =>
+          opinion.role.name === data.role_name
+            ? {
+                ...opinion,
+                advocate_response: data.response,
+                advocate_response_completed_at: data.completed_at,
+              }
+            : opinion,
+        ),
+      };
+    }
     case "synthesis.completed":
+      return { ...run, synthesis: (event.data as { synthesis: string }).synthesis };
+    case "challenge.synthesis_completed":
       return { ...run, synthesis: (event.data as { synthesis: string }).synthesis };
     case "run.completed": {
       const summary = (event.data as { summary: RunSummary }).summary;
@@ -101,4 +151,3 @@ export function applyRunEvent(run: RunRecord, event: RunEvent): RunRecord {
 export function isTerminal(run: Pick<RunRecord, "status">): boolean {
   return run.status === "completed" || run.status === "failed";
 }
-

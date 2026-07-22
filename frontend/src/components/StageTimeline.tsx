@@ -9,6 +9,14 @@ const stages: Array<{ id: RunStage; label: string; short: string; anchor: string
   { id: "synthesis", label: "Final synthesis", short: "Synthesize", anchor: "synthesis" },
 ];
 
+const challengeStages: Array<{ id: RunStage; label: string; short: string; anchor: string | null }> = [
+  { id: "challenge_reconsideration", label: "Role reconsideration", short: "Rethink", anchor: "panel" },
+  { id: "challenge_peer_debate", label: "Challenge debate", short: "Debate", anchor: "panel" },
+  { id: "challenge_advocate", label: "Devil's advocate", short: "Stress-test", anchor: "advocate" },
+  { id: "challenge_advocate_response", label: "Role responses", short: "Respond", anchor: "panel" },
+  { id: "challenge_synthesis", label: "New conclusion", short: "Synthesize", anchor: "synthesis" },
+];
+
 type StageState = "pending" | "active" | "completed" | "skipped" | "failed";
 
 function stateFor(run: RunRecord, stage: RunStage): StageState {
@@ -36,6 +44,26 @@ function stateFor(run: RunRecord, stage: RunStage): StageState {
     return "completed";
   if (stage === "devils_advocate" && run.advocate_analysis) return "completed";
   if (stage === "synthesis" && run.synthesis) return "completed";
+  if (
+    stage === "challenge_reconsideration" &&
+    run.roles.length > 0 &&
+    run.expert_opinions.length === run.roles.length
+  )
+    return "completed";
+  if (
+    stage === "challenge_peer_debate" &&
+    run.roles.length > 0 &&
+    run.expert_opinions.every((opinion) => opinion.rebuttal)
+  )
+    return "completed";
+  if (stage === "challenge_advocate" && run.advocate_analysis) return "completed";
+  if (
+    stage === "challenge_advocate_response" &&
+    run.roles.length > 0 &&
+    run.expert_opinions.every((opinion) => opinion.advocate_response)
+  )
+    return "completed";
+  if (stage === "challenge_synthesis" && run.synthesis) return "completed";
   if (run.stage === stage) return "active";
   return "pending";
 }
@@ -45,9 +73,12 @@ function scrollToSection(anchor: string) {
 }
 
 export function StageTimeline({ run }: { run: RunRecord }) {
-  const visibleStages = run.clarify ? stages : stages.slice(1);
+  const visibleStages = run.challenge ? challengeStages : run.clarify ? stages : stages.slice(1);
   return (
-    <ol className={`stage-timeline ${run.clarify ? "has-clarification" : ""}`} aria-label="Analysis progress">
+    <ol
+      className={`stage-timeline ${run.clarify ? "has-clarification" : ""} ${run.challenge ? "is-challenge" : ""}`}
+      aria-label="Analysis progress"
+    >
       {visibleStages.map((stage, index) => {
         const state = stateFor(run, stage.id);
         const clickable = stage.anchor !== null && state !== "pending";

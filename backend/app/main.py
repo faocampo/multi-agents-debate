@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from .client import HttpxLLMClient, LLMClient, ProviderError
 from .config import Settings
 from .models import (
+    CreateChallengeRequest,
     CreateRoleRequest,
     CreateRunRequest,
     LLMModelInfo,
@@ -34,7 +35,7 @@ from .role_store import (
     RolePersistenceError,
 )
 from .sse import event_stream
-from .store import RunStore, StageConflictError
+from .store import ChallengeLimitError, RunStore, StageConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,40 @@ def create_app(
     async def get_run(run_id: UUID) -> RunRecord:
         try:
             return await store.get_record(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
+
+    @application.post(
+        "/api/runs/{run_id}/challenges",
+        response_model=RunSummary,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def create_challenge(
+        run_id: UUID, payload: CreateChallengeRequest, response: Response
+    ) -> RunSummary:
+        try:
+            summary = await store.create_challenge_run(
+                run_id,
+                kind=payload.kind,
+                challenge_input=payload.input,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Run not found") from exc
+        except StageConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ChallengeLimitError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        response.headers["Location"] = f"/api/runs/{summary.id}"
+        executor: RunExecutor = application.state.executor
+        task = asyncio.create_task(executor.run(summary.id))
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
+        return summary
+
+    @application.get("/api/runs/{run_id}/lineage", response_model=list[RunSummary])
+    async def get_lineage(run_id: UUID) -> list[RunSummary]:
+        try:
+            return await store.get_lineage(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Run not found") from exc
 

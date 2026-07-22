@@ -7,6 +7,11 @@ from app.client import ProviderTimeout
 from app.models import LLMModelInfo
 from app.prompts import (
     ADVOCATE_SYSTEM,
+    CHALLENGE_ADVOCATE_RESPONSE_SYSTEM,
+    CHALLENGE_ADVOCATE_SYSTEM,
+    CHALLENGE_PEER_DEBATE_SYSTEM,
+    CHALLENGE_RECONSIDERATION_SYSTEM,
+    CHALLENGE_SYNTHESIS_SYSTEM,
     CLARIFYING_QUESTIONS_SYSTEM,
     DEBATE_SYSTEM,
     EXPERT_SYSTEM,
@@ -53,6 +58,16 @@ class ScriptedClient:
             return "## Shared assumptions under attack\n\nThe plan assumes stable demand."
         if system == SYNTHESIS_SYSTEM:
             return "## Verdict\n\nRun a reversible pilot."
+        if system == CHALLENGE_RECONSIDERATION_SYSTEM:
+            return f"## Revised role recommendation\n\nReconsidered by {payload['role']['name']}."
+        if system == CHALLENGE_PEER_DEBATE_SYSTEM:
+            return f"## Revised recommendation after peer debate\n\nChallenge debate from {payload['role']['name']}."
+        if system == CHALLENGE_ADVOCATE_SYSTEM:
+            return "## Challenge pressure points\n\nThe challenge could overturn demand assumptions."
+        if system == CHALLENGE_ADVOCATE_RESPONSE_SYSTEM:
+            return f"## Final role position\n\nAdvocate response from {payload['role']['name']}."
+        if system == CHALLENGE_SYNTHESIS_SYSTEM:
+            return "## Direct answer to the challenge\n\nThe pilot remains justified.\n\n## Conclusion status\n\nreaffirmed"
         raise AssertionError("Unexpected system prompt")
 
     async def list_models(self, zdr: bool = False) -> list[LLMModelInfo]:

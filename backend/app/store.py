@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from .models import (
+    ChallengeKind,
+    ChallengeMetadata,
     ExpertOpinion,
     RoleSpec,
     RunError,
@@ -23,6 +25,10 @@ from .models import (
 
 
 class StageConflictError(Exception):
+    pass
+
+
+class ChallengeLimitError(Exception):
     pass
 
 
@@ -57,6 +63,8 @@ class RunStore:
             role_count=len(record.roles),
             created_at=record.created_at,
             completed_at=record.completed_at,
+            root_run_id=record.root_run_id,
+            parent_run_id=record.parent_run_id,
         )
 
     @staticmethod
@@ -119,6 +127,76 @@ class RunStore:
                 stored,
                 RunEventType.RUN_CREATED,
                 {"summary": summary.model_dump(mode="json")},
+                timestamp=now,
+            )
+        return copy.deepcopy(summary)
+
+    async def create_challenge_run(
+        self,
+        parent_run_id: UUID,
+        *,
+        kind: ChallengeKind,
+        challenge_input: str,
+    ) -> RunSummary:
+        parent = await self.get_record(parent_run_id)
+        if parent.status is not RunStatus.COMPLETED:
+            raise StageConflictError("only completed runs can be challenged")
+        if parent.synthesis is None:
+            raise StageConflictError("completed run is missing a final synthesis")
+        if not parent.roles:
+            raise StageConflictError("completed run is missing its role panel")
+
+        root_run_id = parent.root_run_id or parent.id
+        async with self._lock:
+            challenge_count = sum(
+                1
+                for stored in self._runs.values()
+                if stored.record.root_run_id == root_run_id
+                and stored.record.challenge is not None
+            )
+        if challenge_count >= 20:
+            raise ChallengeLimitError("a debate can have at most 20 challenge runs")
+
+        now = utc_now()
+        challenge = ChallengeMetadata(
+            kind=kind,
+            input=challenge_input,
+            parent_run_id=parent.id,
+            root_run_id=root_run_id,
+            parent_conclusion=parent.synthesis,
+        )
+        record = RunRecord(
+            id=uuid4(),
+            decision=parent.decision,
+            debate=True,
+            clarify=False,
+            status=RunStatus.QUEUED,
+            stage=RunStage.QUEUED,
+            created_at=now,
+            roles=copy.deepcopy(parent.roles),
+            root_run_id=root_run_id,
+            parent_run_id=parent.id,
+            challenge=challenge,
+        )
+        condition = asyncio.Condition(self._lock)
+        stored = StoredRun(record=record, events=[], next_event_id=1, condition=condition)
+        async with condition:
+            self._runs[record.id] = stored
+            self._insertion_order.append(record.id)
+            summary = self._summary(record)
+            self._append_event(
+                stored,
+                RunEventType.RUN_CREATED,
+                {"summary": summary.model_dump(mode="json")},
+                timestamp=now,
+            )
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_CREATED,
+                {
+                    "challenge": challenge.model_dump(mode="json"),
+                    "summary": summary.model_dump(mode="json"),
+                },
                 timestamp=now,
             )
         return copy.deepcopy(summary)
@@ -254,6 +332,55 @@ class RunStore:
                 timestamp=now,
             )
 
+    async def set_challenge_reconsideration(
+        self, run_id: UUID, role: RoleSpec, analysis: str
+    ) -> ExpertOpinion:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            now = utc_now()
+            opinion = ExpertOpinion(
+                role=role,
+                initial_analysis=analysis,
+                initial_completed_at=now,
+            )
+            by_name = {item.role.name: item for item in stored.record.expert_opinions}
+            by_name[role.name] = opinion
+            stored.record.expert_opinions = [
+                by_name[item.name] for item in stored.record.roles if item.name in by_name
+            ]
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_RECONSIDERATION_COMPLETED,
+                {"opinion": opinion.model_dump(mode="json")},
+                timestamp=now,
+            )
+            return copy.deepcopy(opinion)
+
+    async def set_challenge_peer_response(
+        self, run_id: UUID, role_name: str, response: str
+    ) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            now = utc_now()
+            for index, opinion in enumerate(stored.record.expert_opinions):
+                if opinion.role.name == role_name:
+                    stored.record.expert_opinions[index] = opinion.model_copy(
+                        update={"rebuttal": response.strip(), "rebuttal_completed_at": now}
+                    )
+                    break
+            else:
+                raise KeyError(role_name)
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_PEER_DEBATE_COMPLETED,
+                {
+                    "role_name": role_name,
+                    "response": response.strip(),
+                    "completed_at": now.isoformat().replace("+00:00", "Z"),
+                },
+                timestamp=now,
+            )
+
     async def set_advocate(self, run_id: UUID, analysis: str) -> None:
         stored = await self._stored(run_id)
         async with stored.condition:
@@ -262,6 +389,44 @@ class RunStore:
                 stored,
                 RunEventType.ADVOCATE_COMPLETED,
                 {"analysis": analysis.strip()},
+            )
+
+    async def set_challenge_advocate(self, run_id: UUID, analysis: str) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            stored.record.advocate_analysis = analysis.strip()
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_ADVOCATE_COMPLETED,
+                {"analysis": analysis.strip()},
+            )
+
+    async def set_challenge_advocate_response(
+        self, run_id: UUID, role_name: str, response: str
+    ) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            now = utc_now()
+            for index, opinion in enumerate(stored.record.expert_opinions):
+                if opinion.role.name == role_name:
+                    stored.record.expert_opinions[index] = opinion.model_copy(
+                        update={
+                            "advocate_response": response.strip(),
+                            "advocate_response_completed_at": now,
+                        }
+                    )
+                    break
+            else:
+                raise KeyError(role_name)
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_ADVOCATE_RESPONSE_COMPLETED,
+                {
+                    "role_name": role_name,
+                    "response": response.strip(),
+                    "completed_at": now.isoformat().replace("+00:00", "Z"),
+                },
+                timestamp=now,
             )
 
     async def set_synthesis(self, run_id: UUID, synthesis: str) -> None:
@@ -273,6 +438,27 @@ class RunStore:
                 RunEventType.SYNTHESIS_COMPLETED,
                 {"synthesis": synthesis.strip()},
             )
+
+    async def set_challenge_synthesis(self, run_id: UUID, synthesis: str) -> None:
+        stored = await self._stored(run_id)
+        async with stored.condition:
+            stored.record.synthesis = synthesis.strip()
+            self._append_event(
+                stored,
+                RunEventType.CHALLENGE_SYNTHESIS_COMPLETED,
+                {"synthesis": synthesis.strip()},
+            )
+
+    async def get_lineage(self, run_id: UUID) -> list[RunSummary]:
+        record = await self.get_record(run_id)
+        root_id = record.root_run_id or record.id
+        async with self._lock:
+            related = [
+                self._runs[item_id].record
+                for item_id in self._insertion_order
+                if item_id == root_id or self._runs[item_id].record.root_run_id == root_id
+            ]
+        return copy.deepcopy([self._summary(item) for item in related])
 
     async def complete_run(self, run_id: UUID) -> None:
         stored = await self._stored(run_id)

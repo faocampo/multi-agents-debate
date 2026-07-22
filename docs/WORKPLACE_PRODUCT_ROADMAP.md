@@ -4,10 +4,12 @@
 
 - **Status:** Proposed implementation roadmap
 - **Prepared:** 2026-07-20
+- **Last updated:** 2026-07-22
 - **Target environment:** Internal, on-premise, VPN-accessible service
 - **Primary users:** C-level executives and Directors
 - **Planning unit:** AI engineering hours
 - **Roadmap style:** Outcome-based releases plus implementation-ready product and technical backlog
+- **First product priority:** Challenge-driven debate recreation after a final conclusion
 
 ---
 
@@ -21,10 +23,14 @@ The first productive release should optimize this workflow:
 2. The executive defines the options, constraints, investment horizon, assumptions, and success criteria.
 3. The executive adds selected evidence from Google Drive, Fireflies, ClickUp, an approved MCP server, or a direct API connector.
 4. The service creates an independent expert panel, optional rebuttal round, stress test, and evidence-linked synthesis.
-5. The debate remains private or becomes visible to authenticated colleagues inside the organization.
-6. The creator shares a permission-aware link or Slack summary.
-7. Readers submit positive or negative feedback on the outcome.
-8. Product analytics measure activation, repeat use, sharing, and reported helpfulness through a metadata-only event schema.
+5. After the conclusion, an authorized user asks a follow-up question or challenges the decision.
+6. The same generated roles independently reconsider their positions around that specific input.
+7. The roles debate their revised positions, the devil's advocate challenges the panel, and every role responds to the devil's advocate.
+8. A new synthesis answers the challenge, explains what changed, and reaches a traceable conclusion while preserving the original run.
+9. The debate remains private or becomes visible to authenticated colleagues inside the organization.
+10. The creator shares a permission-aware link or Slack summary.
+11. Readers submit positive or negative feedback on the outcome.
+12. Product analytics measure activation, challenge usage, repeat use, sharing, and reported helpfulness through a metadata-only event schema.
 
 ### Product boundary
 
@@ -38,6 +44,10 @@ The service scope is analysis, debate, evidence, and sharing.
 - Google Workspace accounts are the identity source; the deployment uses one or more administrator-approved email domains.
 - The on-premise network can make controlled outbound connections to Google, Slack, approved model providers, and approved connectors.
 - External connectors are read-only in the first release.
+- The debate creator and users with `participant` permission can challenge a completed conclusion inside the same debate. Viewers can create a private fork.
+- A challenge reuses the exact role-panel snapshot from its parent run, together with the original decision, evidence snapshots, and final conclusion.
+- Each challenge creates an immutable child run; repeated challenges form an attributable lineage rather than overwriting prior conclusions.
+- The parent run's model profile remains the default for comparability. An approved replacement profile is recorded explicitly when the original profile is unavailable.
 - Initial capacity objective: 100 registered users, 25 simultaneously active users, and 10 concurrently running debates.
 - Default evidence retention is 90 days and debate retention is indefinite until an administrator chooses a policy.
 
@@ -70,6 +80,7 @@ The current architecture was designed for a trusted, local, single-user process.
 | Model-only synthesis | No auditable connection between sources and claims | Evidence snapshots, source identifiers, citations, unsupported-claim warnings |
 | Markdown download | Sharing depends on file exchange | Authenticated links, Slack share, permission-aware unfurls |
 | Unmeasured helpfulness | Product value is implicit | Per-user positive/negative feedback plus reason categories |
+| Single terminal conclusion | Follow-up questions and challenges happen outside the recorded debate | Immutable challenge runs using the same roles, expert-versus-advocate responses, and conclusion lineage |
 | Direct asynchronous tasks | Work is tied to the API process | Persistent job state, worker execution, cancellation/retry, concurrency controls |
 
 Repository evidence: [README](../README.md), [FastAPI routes](../backend/app/main.py), [run models](../backend/app/models.py), [in-memory store](../backend/app/store.py), [provider client](../backend/app/client.py), and [original design specification](../outputs/ai-swarm-framework-spec.md).
@@ -85,14 +96,76 @@ Repository evidence: [README](../README.md), [FastAPI routes](../backend/app/mai
 5. **Controlled egress.** Before a run begins, the user can see whether confidential content will go to a local or external model and which external sources will be contacted.
 6. **Read-only intelligence first.** Connectors retrieve user-selected evidence. External-system changes remain behind separately permissioned, user-confirmed actions in a later release.
 7. **Disagreement remains useful.** Outputs distinguish consensus, competing recommendations, assumptions, and reversal conditions.
-8. **Fast executive consumption.** The first screen of a completed debate delivers a decision-ready summary, with detail available below it.
-9. **Metadata-only measurement.** Adoption analytics contain event metadata and performance data, with decision content excluded by schema.
+8. **Conclusions remain challengeable.** A final conclusion is a durable checkpoint that users can question, stress-test, and recreate through the same expert panel.
+9. **Fast executive consumption.** The first screen of a completed debate delivers a decision-ready summary, with detail available below it.
+10. **Metadata-only measurement.** Adoption analytics contain event metadata and performance data, with decision content excluded by schema.
 
 ---
 
 ## 4. Target product experience
 
-### 4.1 Strategy and investment decision brief
+### 4.1 Challenge and recreate the debate — P0
+
+Every completed run exposes a primary action: **Challenge conclusion**. The action accepts either a question or a direct challenge to the final decision and creates a new run inside the same debate.
+
+#### User experience
+
+- The user selects `Question` or `Challenge` and enters an input of 1–5,000 characters.
+- The challenge form shows the conclusion being challenged, the role panel that will be reused, the selected evidence snapshot, the model destination, and the estimated number of model calls.
+- Submission creates a child run and immediately opens a live challenge timeline.
+- The original run remains visible and unchanged.
+- The new result shows the direct answer, the resulting conclusion, and a **What changed** comparison against its parent.
+- The user can challenge any completed conclusion again, creating a linear sequence or a branch from an earlier run.
+- The challenge and every resulting run display the initiating user's identity and timestamp.
+
+#### Challenge orchestration
+
+```mermaid
+flowchart LR
+    C[User question or challenge] --> R[Independent reconsideration by the same roles]
+    R --> P[Peer debate on revised positions]
+    P --> D[Devil's-advocate challenge]
+    D --> A[Every role responds to the devil's advocate]
+    A --> S[New conflict-preserving synthesis]
+    S --> X[Direct answer and what changed]
+```
+
+The challenge pipeline is:
+
+1. **Authorize and snapshot.** Verify `participant` access, require a completed parent run, and snapshot the challenge, parent conclusion, decision brief, evidence references, role panel, and model profile.
+2. **Independent reconsideration.** Call every original role in parallel. Each role receives the user's challenge, the original decision and evidence, the parent conclusion, and that role's own preceding position. Peer reconsiderations remain hidden during this stage.
+3. **Peer debate.** Call every role in parallel with all revised positions. Each role addresses the strongest competing response specifically in relation to the user's challenge.
+4. **Devil's advocate.** Generate a focused attack on the revised panel's shared assumptions, omissions, and emerging consensus.
+5. **Expert response to the devil's advocate.** Call every role in parallel again. Each role must defend, revise, or withdraw its position in direct response to the devil's advocate.
+6. **Challenge synthesis.** Produce a new conclusion from the reconsiderations, peer debate, devil's-advocate challenge, and expert responses.
+
+Every question and challenge executes the complete pipeline. With `N` original roles, a challenge uses `3N + 2` model calls: `N` reconsiderations, `N` peer-debate responses, one devil's advocate, `N` expert responses to the advocate, and one synthesis. Role generation is skipped because the exact parent role snapshots are reused. A required-call failure retains every completed stage and exposes a retry that creates a new attempt linked to the same challenge.
+
+The challenge synthesis must include:
+
+1. Direct answer to the user's question or challenge.
+2. New conclusion.
+3. Outcome status: `reaffirmed`, `revised`, or `overturned`.
+4. Positions that changed and the evidence or reasoning that changed them.
+5. Positions that remained stable and why.
+6. Strongest unresolved disagreement.
+7. Devil's-advocate challenge and how the panel answered it.
+8. New assumptions, reversal conditions, and unknowns.
+9. Comparison with the parent conclusion.
+
+#### API and event contract
+
+- `POST /api/runs/{parent_run_id}/challenges`
+  - Request: `{ "kind": "question" | "challenge", "input": string }`.
+  - Response: HTTP `202` with the child run summary and lineage metadata.
+- `GET /api/runs/{run_id}/lineage`
+  - Returns the root run, ancestors, direct children, challenge identity, and conclusion status for each authorized node.
+- New persisted stages: `challenge_reconsideration`, `challenge_peer_debate`, `challenge_advocate`, `challenge_advocate_response`, and `challenge_synthesis`.
+- New SSE events: `challenge.created`, `challenge.reconsideration_completed`, `challenge.peer_debate_completed`, `challenge.advocate_completed`, `challenge.advocate_response_completed`, and `challenge.synthesis_completed`.
+
+The challenge input and all previous model outputs remain untrusted prompt data. Authorization, lineage, model destination, and tool access remain application-enforced.
+
+### 4.2 Strategy and investment decision brief
 
 Replace the single text box with a progressive form while retaining an optional free-form mode.
 
@@ -127,7 +200,7 @@ Initial templates:
 
 Each template changes the clarification questions, suggested expert lenses, and synthesis format while preserving the orchestration security boundary.
 
-### 4.2 Evidence pack
+### 4.3 Evidence pack
 
 The creator selects evidence before starting the debate:
 
@@ -150,7 +223,7 @@ Every evidence item records:
 
 Evidence is serialized as untrusted data. System instructions, tool authorization, and debate access are enforced by application code outside the model.
 
-### 4.3 Executive synthesis
+### 4.4 Executive synthesis
 
 The top of a completed debate should contain:
 
@@ -166,7 +239,9 @@ The top of a completed debate should contain:
 
 The detailed expert analyses, rebuttals, devil's advocate, and full synthesis remain available below the executive view.
 
-### 4.4 Decision room and sharing
+For challenge runs, the executive view begins with the user's challenge, the `reaffirmed`, `revised`, or `overturned` status, the new conclusion, and a parent-versus-child comparison.
+
+### 4.5 Decision room and sharing
 
 - Every debate displays its creator's name and avatar.
 - A new debate is private.
@@ -178,8 +253,9 @@ The detailed expert analyses, rebuttals, devil's advocate, and full synthesis re
 - Sharing changes are appended to the audit log.
 - A public/private badge appears in lists, pages, Slack messages, and exports.
 - Search and filters cover title, creator, decision type, visibility, model, and creation date; content search is deferred until its authorization design is verified.
+- The run lineage shows the original conclusion and every question/challenge branch, with initiator, timestamp, status, and **What changed** summary.
 
-### 4.5 Feedback
+### 4.6 Feedback
 
 Readers can submit one current rating per completed run:
 
@@ -190,7 +266,7 @@ Readers can submit one current rating per completed run:
 
 The creator sees aggregate counts and submitted notes. Product administrators see aggregate adoption and reason trends through a note-excluding analytics view. Feedback exports exclude decision content.
 
-### 4.6 Slack experience
+### 4.7 Slack experience
 
 The Slack app should use Socket Mode for the on-premise deployment, using an outbound WebSocket connection that fits a VPN-hosted service.
 
@@ -206,7 +282,7 @@ First-release interactions:
 
 Slack payloads and events must be idempotent. Tokens are stored encrypted, scopes are minimal, and sensitive debate text is omitted from operational logs.
 
-### 4.7 BYOK model gateway
+### 4.8 BYOK model gateway
 
 Administrators configure provider profiles rather than exposing raw endpoint fields to every user.
 
@@ -229,7 +305,7 @@ Each profile contains:
 
 Users select a profile while key access remains inside the model gateway. The run records the profile and model snapshot. Cross-provider fallback requires an explicit administrator policy because it can change the data destination.
 
-### 4.8 Connector and MCP platform
+### 4.9 Connector and MCP platform
 
 Create one connector abstraction with two implementations:
 
@@ -312,6 +388,8 @@ PostgreSQL row-level security provides defense in depth for debates, runs, event
 
 - Anonymous access matrix for every route, including SSE, exports, settings, models, and connector callbacks.
 - Alice/Bob private-debate matrix for read, update, delete, share, feedback, export, events, evidence, and fork endpoints.
+- Challenge authorization matrix for creator, participant, viewer, public reader, revoked participant, administrator, and cross-organization actor.
+- Lineage tests proving that a user can access a child run only when authorized for its debate and parent, and that a challenge preserves the original run.
 - Member/administrator vertical-privilege matrix.
 - Cross-organization tests even while the initial deployment has one organization.
 - Share revocation during an active SSE connection.
@@ -396,8 +474,10 @@ deploy/
 | `group` / `group_member` | group identity and membership |
 | `debate` | id, organization_id, created_by, title, structured brief, visibility, timestamps |
 | `debate_share` | debate_id, principal type/id, permission, granted_by, revoked_at |
-| `run` | debate_id, model profile snapshot, state, options, output, error, lineage |
+| `run` | debate_id, root_run_id, parent_run_id, model profile snapshot, state, options, output, conclusion status, error, lineage |
+| `run_challenge` | child_run_id, parent_run_id, initiated_by, kind, input, sequence, created_at |
 | `run_event` | run_id, monotonic sequence, event type, safe payload, timestamp |
+| `expert_round` | run_id, role snapshot, round type, response, completion timestamp |
 | `evidence_item` | debate_id, source metadata, attached_by, classification, retention |
 | `evidence_snapshot` | evidence_id, encrypted object reference/text, hash, retrieval metadata |
 | `feedback` | run_id, user_id, rating, reason, note, timestamps |
@@ -419,12 +499,12 @@ Estimates include implementation, automated tests, local integration tests, docu
 | --- | ---: | --- | --- |
 | R0 — Service foundation | 18–26 h | Durable application with identity primitives | PostgreSQL migrations pass; all existing behavior remains covered |
 | R1 — Secure private pilot | 44–64 h | Logged-in leaders can create durable private/public debates safely | Authz matrix, audit, secure sessions, restart recovery, creator attribution pass |
-| R2 — Decision-ready product | 66–96 h | Strategy and investment briefs produce executive, evidence-ready outputs | Templates, structured synthesis, sharing, feedback, BYOK local/external profiles pass |
-| R3 — Slack-connected pilot | 82–118 h | Leaders can start, share, and receive results in Slack | Identity linking, private/public share rules, Socket Mode, idempotency pass |
-| R4 — Connected intelligence | 110–155 h | User-selected Drive, Fireflies, ClickUp, and MCP evidence grounds debates | Read-only connector gateway, citations, injection and egress controls pass |
-| R5 — Hardened internal v1 | 134–188 h | Administrators can operate, measure, back up, and recover the service | Deployment, observability, retention, load, restore, and security gates pass |
+| R2 — Challenge-ready decision product | 76–110 h | Leaders can challenge a final conclusion through the same panel and receive a traceable new conclusion | Full challenge pipeline, lineage, templates, synthesis, sharing, feedback, and BYOK profiles pass |
+| R3 — Slack-connected pilot | 94–135 h | Leaders can start, share, receive, and open the challenge flow from Slack | Identity linking, private/public share rules, Socket Mode, challenge deep link, and idempotency pass |
+| R4 — Connected intelligence | 122–172 h | User-selected Drive, Fireflies, ClickUp, and MCP evidence grounds original and challenged debates | Read-only connector gateway, citations, snapshot reuse, injection and egress controls pass |
+| R5 — Hardened internal v1 | 146–205 h | Administrators can operate, measure, back up, and recover the service | Deployment, observability, retention, load, restore, and security gates pass |
 
-The earliest useful pilot is R1. R2 is the recommended adoption pilot. R5 is the service-quality target for organization-wide use.
+R1 is the secure foundation pilot. R2 is the first product adoption pilot because it includes the P0 challenge loop. R5 is the service-quality target for organization-wide use.
 
 ### Phase 0 — Architecture safety net and database cutover — 18–26 h
 
@@ -455,12 +535,16 @@ The earliest useful pilot is R1. R2 is the recommended adoption pilot. R5 is the
 | SEC-01 | Browser/API hardening and request limits | CSP, trusted host, credentialed CORS, security headers, rate limits, payload limits, and remote-resource blocking pass | 3–4 h |
 | SEC-02 | Full anonymous/horizontal/vertical security test suite | CI blocks merge on authorization regression | 2–3 h |
 
-### Phase 2 — Strategy product, feedback, and BYOK — 22–32 h
+### Phase 2 — Challenge loop, strategy product, feedback, and BYOK — 32–46 h
 
-**Product outcome:** Leaders obtain consistent, decision-ready outputs using approved local or external models and can report whether the result helped.
+**Product outcome:** Leaders can challenge any completed conclusion, watch the same roles reconsider and debate it through an expert-versus-advocate round, and obtain a traceable new conclusion using approved local or external models.
 
 | ID | Backlog item | Acceptance evidence | Estimate |
 | --- | --- | --- | ---: |
+| CHL-01 | Challenge entity, immutable parent/child run lineage, permissions, and API | Completed parent creates one attributable child run; original outputs remain unchanged; participant/viewer authorization matrix passes | 2–3 h |
+| CHL-02 | Same-panel reconsideration, peer debate, devil's advocate, expert-response, and synthesis orchestration | Exact parent role snapshots are reused; independent reconsiderations contain no peer output; all roles respond to the advocate before synthesis | 4–5 h |
+| CHL-03 | Challenge composer, live timeline, conclusion status, and parent comparison | User submits a question/challenge, watches every stage, and sees reaffirmed/revised/overturned plus **What changed** | 2–3 h |
+| CHL-04 | Repeat/branch, failure recovery, SSE replay, prompt, call-order, and authorization tests | Repeated and branched challenges retain correct lineage; restart/reconnect preserves partial outputs; call counts and stage ordering pass | 2–3 h |
 | PRD-01 | Progressive decision brief and free-form mode | Six templates create valid briefs; drafts autosave; accessible mobile/desktop flows pass | 4–6 h |
 | PRD-02 | Strategy-aware panel and prompt contracts | Template, options, constraints, horizon, and success criteria reach the correct stages as structured data | 2–3 h |
 | PRD-03 | Executive synthesis contract | Output contains recommendation, option matrix, downside, disagreement, assumptions, reversal conditions, and unknowns | 3–4 h |
@@ -471,7 +555,7 @@ The earliest useful pilot is R1. R2 is the recommended adoption pilot. R5 is the
 | LLM-02 | Encrypted BYOK secret lifecycle and admin UI | Key is write-only, encrypted, rotatable, revocable, and absent from logs/responses | 2–3 h |
 | LLM-03 | Egress classification, limits, and run disclosure | Restricted runs select local profiles; fallback requires policy approval; user sees destination before start | 2–3 h |
 
-### Phase 3 — Seamless Slack workflow — 16–22 h
+### Phase 3 — Seamless Slack workflow — 18–25 h
 
 **Product outcome:** Executives can initiate and share debates from their normal communication environment through an outbound Socket Mode connection.
 
@@ -483,6 +567,7 @@ The earliest useful pilot is R1. R2 is the recommended adoption pilot. R5 is the
 | SLK-04 | Share dialog and Block Kit summary | Public posts can include a rich summary; private channel posts use a generic card; all links require application authentication | 3–4 h |
 | SLK-05 | Permission-aware link unfurls | Private debate unfurls contain a generic confidential-debate card for every Slack actor and conversation | 3–4 h |
 | SLK-06 | Completion and failure notifications | Creator receives one idempotent DM with safe status and link | 2–3 h |
+| SLK-07 | Challenge action on completed-run Slack messages | Button deep-links an authorized user to the parent run's challenge composer; challenge input stays inside the application | 2–3 h |
 
 ### Phase 4 — Evidence and external connector platform — 28–37 h
 
@@ -522,7 +607,7 @@ The earliest useful pilot is R1. R2 is the recommended adoption pilot. R5 is the
 
 ### P1 — Validate after the connected pilot
 
-1. **Decision replay:** compare two runs side by side and highlight changed inputs, evidence, expert positions, and recommendations.
+1. **Challenge-tree insights:** compare multiple challenge branches and identify which assumptions, roles, or evidence repeatedly change the conclusion.
 2. **Assumption register:** promote key assumptions from a synthesis into a reusable organization library with supporting or contradicting evidence.
 3. **Decision memory:** suggest related public or shared debates while enforcing the current user's permissions before retrieval.
 4. **Counterfactual simulator:** rerun only the affected stages when investment amount, time horizon, or a key assumption changes.
@@ -557,6 +642,8 @@ This combines adoption with recurrence while respecting that C-level strategic d
 | --- | --- | ---: |
 | Reach | Invited leaders who sign in within 14 days | 70% |
 | Activation | Signed-in leaders who complete a first debate within 7 days | 60% |
+| Challenge adoption | Completed original debates receiving at least one question or challenge within 14 days | 25% |
+| Challenge completion | Started challenge runs reaching a new conclusion | 90% |
 | Productive setup | Completed debates with a structured brief and at least one explicit assumption | 70% |
 | Evidence use | Completed debates containing at least one attached evidence item | 50% initially; 70% after connectors stabilize |
 | Sharing | Completed debates shared with a user/group or made public | 50% |
@@ -572,6 +659,8 @@ Targets are pilot hypotheses. Reset them after four weeks of observed cohort beh
 - Zero secrets or confidential content in application logs and product analytics.
 - At least 99% successful authorization-policy checks under the automated attack matrix; all failures block release.
 - Run completion rate at or above 95%, excluding user cancellation and upstream provider outage.
+- Every challenge run references one completed parent, preserves that parent, and reuses its exact role snapshots.
+- Every successful challenge run records reconsideration, peer debate, devil's advocate, expert responses to the advocate, and final synthesis in order.
 - P95 time to first expert result below 45 seconds for approved commercial models under normal load.
 - P95 debate page load below 2 seconds inside the target VPN.
 - Provider destination shown for 100% of runs.
@@ -585,6 +674,9 @@ Allowlisted events:
 - `debate.draft_created`
 - `debate.run_started`
 - `debate.run_completed`
+- `debate.challenge_submitted`
+- `debate.challenge_completed`
+- `debate.challenge_branched`
 - `debate.visibility_changed`
 - `debate.shared`
 - `debate.opened_from_slack`
@@ -609,11 +701,12 @@ Allowed dimensions include pseudonymous user ID, cohort, application role, decis
 ### Launch sequence
 
 1. Seed six templates using sanitized example decisions relevant to the organization.
-2. Run a 45-minute decision clinic where each participant creates one real private debate.
-3. Enable Slack sharing after authentication and private/public controls have passed pilot tests.
-4. Add Google Drive first, then Fireflies and ClickUp based on observed evidence needs.
-5. Review adoption, recurrence, negative-feedback reasons, run failures, and security events each week.
-6. Improve templates and output structure before adding more agent roles or connectors.
+2. Run a 60-minute decision clinic where each participant creates one real private debate and then challenges its conclusion once.
+3. Review whether the challenge reaffirmed, revised, or overturned the recommendation and whether the explanation was useful.
+4. Enable Slack sharing after authentication and private/public controls have passed pilot tests.
+5. Add Google Drive first, then Fireflies and ClickUp based on observed evidence needs.
+6. Review adoption, challenge adoption/completion, recurrence, negative-feedback reasons, run failures, and security events each week.
+7. Improve the challenge prompts, templates, and output structure before adding more agent roles or connectors.
 
 ### Pilot interview prompts
 
@@ -622,6 +715,9 @@ Allowed dimensions include pseudonymous user ID, cohort, application role, decis
 - Which output was used in a meeting, memo, or investment discussion?
 - Which important evidence was missing or difficult to attach?
 - Which disagreement or reversal condition was useful?
+- What question or challenge did you submit after the first conclusion?
+- Did the same roles engage with the challenge specifically, including the devil's advocate, or repeat their previous positions?
+- Was the final `reaffirmed`, `revised`, or `overturned` classification supported by the comparison?
 - Why would you return for another decision?
 - What confidentiality concern prevented wider sharing?
 
@@ -643,6 +739,16 @@ Allowed dimensions include pseudonymous user ID, cohort, application role, decis
 
 ### Decision-ready pilot gate — R2
 
+- A completed run exposes **Challenge conclusion** to its creator and participants.
+- The challenge records its initiating user, kind, exact input, parent run, and creation time.
+- The exact parent role-panel snapshot is reused; roles are not regenerated for a challenge run.
+- Every role independently reconsiders before seeing peer reconsiderations.
+- Every role debates the revised peer positions.
+- The devil's advocate attacks the revised panel, and every role responds directly before synthesis.
+- The new synthesis answers the input, reaches a new conclusion, labels it `reaffirmed`, `revised`, or `overturned`, and explains what changed.
+- Original and intermediate runs remain immutable and navigable through lineage.
+- Repeated and branched challenges preserve the correct ancestor chain, visibility, evidence snapshot, and authorization.
+- Challenge-stage failure and SSE reconnection preserve all completed intermediate outputs.
 - Six strategy/investment templates are usable.
 - Executive synthesis includes all nine required sections.
 - Local and approved external model profiles work through encrypted BYOK.
@@ -682,6 +788,9 @@ These inputs configure the implementation within the roadmap sequence and are re
 | Public visibility meaning | ACL-02 | All active authenticated users in the organization |
 | Application admins' private-content access | ACL-02 | No automatic access |
 | Group source | IAM-03 | Product-managed groups first; Google group synchronization later |
+| Challenge permissions | CHL-01 | Creator and participants challenge in place; viewers create a private fork |
+| Challenge branching and limit | CHL-01 | Branch from any completed run; maximum 20 challenge runs per debate during the pilot |
+| Challenge model selection | CHL-02 | Reuse the parent's approved model profile; record an explicit replacement when unavailable |
 | Database and object-storage host | DAT-01 / EVD-01 | PostgreSQL and encrypted on-premise filesystem/object store |
 | Secrets manager | LLM-02 | Existing company vault; encrypted application store only as installation fallback |
 | External-model policy | LLM-03 | Confidential allowed only on administrator-approved profiles; restricted local-only |
@@ -732,9 +841,13 @@ Implement the first vertical slice in this exact order:
 4. Durable debate/run/event persistence.
 5. Creator and visibility UI.
 6. Authorization and restart end-to-end tests.
-7. Structured strategy brief.
-8. Encrypted local/commercial provider profiles with egress disclosure.
-9. Feedback.
-10. Private/public authenticated sharing.
+7. Challenge data model, immutable parent/child API, and permission tests.
+8. Same-panel reconsideration, peer debate, devil's advocate, expert-response, and synthesis orchestration.
+9. Challenge composer, live stages, conclusion status, and parent comparison.
+10. Repeat/branch, failure recovery, SSE replay, and call-order tests.
+11. Structured strategy brief.
+12. Encrypted local/commercial provider profiles with egress disclosure.
+13. Feedback.
+14. Private/public authenticated sharing.
 
-This slice reaches R2 independently of external connector configuration. Slack and connector work then builds on a tested identity and permission model.
+The challenge loop is the first product capability implemented after persistence, identity, authorization, and recovery prerequisites. This slice reaches R2 independently of external connector configuration. Slack and connector work then builds on a tested identity and permission model.

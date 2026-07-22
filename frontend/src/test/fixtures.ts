@@ -10,6 +10,8 @@ export const completedRun: RunRecord = {
   created_at: "2026-07-19T12:00:00.000Z",
   started_at: "2026-07-19T12:00:01.000Z",
   completed_at: "2026-07-19T12:01:00.000Z",
+  root_run_id: null,
+  parent_run_id: null,
   clarifying_questions: [],
   clarifying_answers: null,
   clarification_skipped: false,
@@ -25,10 +27,12 @@ export const completedRun: RunRecord = {
       initial_completed_at: "2026-07-19T12:00:10.000Z",
       rebuttal: "## Revised recommendation\n\nKeep the pilot small.",
       rebuttal_completed_at: "2026-07-19T12:00:30.000Z",
+      advocate_response: null,
+      advocate_response_completed_at: null,
     },
   ],
   advocate_analysis: "## Shared assumptions under attack\n\nDemand may move.",
   synthesis: "## Verdict\n\nRun the pilot.",
   error: null,
+  challenge: null,
 };
-

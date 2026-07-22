@@ -1,4 +1,5 @@
 import type {
+  ChallengeKind,
   LLMModelInfo,
   RoleDefinition,
   RoleInput,
@@ -60,6 +61,21 @@ export function createRun(
   });
 }
 
+export function createChallenge(
+  runId: string,
+  kind: ChallengeKind,
+  input: string,
+): Promise<RunSummary> {
+  return request(`/api/runs/${runId}/challenges`, {
+    method: "POST",
+    body: JSON.stringify({ kind, input }),
+  });
+}
+
+export function getRunLineage(runId: string): Promise<RunSummary[]> {
+  return request(`/api/runs/${runId}/lineage`);
+}
+
 export function submitClarification(
   runId: string,
   payload: { skipped: boolean; answers: string[] },
@@ -114,4 +130,3 @@ export function replaceRole(id: string, input: RoleInput): Promise<RoleDefinitio
 export function deleteRole(id: string): Promise<void> {
   return request(`/api/settings/roles/${id}`, { method: "DELETE" });
 }
-

@@ -25,8 +25,25 @@ export function serializeRunToMarkdown(run: RunRecord): string {
     `- Completed: ${run.completed_at ?? "In progress"}`,
     `- Status: ${run.status}`,
     `- Debate: ${run.debate ? "Enabled" : "Disabled"}`,
+    `- Root run ID: ${run.root_run_id ?? "None"}`,
+    `- Parent run ID: ${run.parent_run_id ?? "None"}`,
     "",
   ];
+
+  if (run.challenge) {
+    lines.push(
+      "## Challenge",
+      "",
+      `- Type: ${run.challenge.kind}`,
+      `- Input: ${run.challenge.input}`,
+      `- Parent run ID: \`${run.challenge.parent_run_id}\``,
+      "",
+      "### Parent conclusion",
+      "",
+      run.challenge.parent_conclusion,
+      "",
+    );
+  }
 
   if (run.clarifying_questions.length > 0 && !run.clarification_skipped) {
     lines.push("## Clarifying Q&A", "");
@@ -54,16 +71,24 @@ export function serializeRunToMarkdown(run: RunRecord): string {
       `- Focus: ${role.focus}`,
       `- Deliberate bias: ${role.bias}`,
       "",
-      "#### Initial analysis",
+      run.challenge ? "#### Independent reconsideration" : "#### Initial analysis",
       "",
       opinion?.initial_analysis ?? "Pending.",
       "",
     );
     if (run.debate) {
       lines.push(
-        "#### Rebuttal",
+        run.challenge ? "#### Challenge peer debate" : "#### Rebuttal",
         "",
         opinion?.rebuttal ?? "Pending.",
+        "",
+      );
+    }
+    if (run.challenge) {
+      lines.push(
+        "#### Response to advocate",
+        "",
+        opinion?.advocate_response ?? "Pending.",
         "",
       );
     }

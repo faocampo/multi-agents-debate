@@ -105,6 +105,68 @@ async def test_create_list_snapshot_and_completed_replay(api_client: httpx.Async
 
 
 @pytest.mark.asyncio
+async def test_challenge_completed_run_reuses_roles_and_streams_lineage(
+    api_client: httpx.AsyncClient,
+) -> None:
+    parent_response = await api_client.post(
+        "/api/runs",
+        json={"decision": "Should we launch?", "debate": True},
+    )
+    parent = await wait_for_terminal(api_client, parent_response.json()["id"])
+
+    challenge_response = await api_client.post(
+        f"/api/runs/{parent['id']}/challenges",
+        json={"kind": "challenge", "input": "What if demand is much lower than expected?"},
+    )
+
+    assert challenge_response.status_code == 202
+    child_summary = challenge_response.json()
+    assert child_summary["parent_run_id"] == parent["id"]
+    assert child_summary["root_run_id"] == parent["id"]
+    assert challenge_response.headers["Location"] == f"/api/runs/{child_summary['id']}"
+
+    child = await wait_for_terminal(api_client, child_summary["id"])
+    assert child["status"] == "completed"
+    assert child["decision"] == parent["decision"]
+    assert [role["name"] for role in child["roles"]] == [role["name"] for role in parent["roles"]]
+    assert child["challenge"]["input"] == "What if demand is much lower than expected?"
+    assert child["challenge"]["parent_conclusion"] == parent["synthesis"]
+    assert all(opinion["advocate_response"] for opinion in child["expert_opinions"])
+    assert "Conclusion status" in child["synthesis"]
+
+    lineage = (await api_client.get(f"/api/runs/{child['id']}/lineage")).json()
+    assert [item["id"] for item in lineage] == [parent["id"], child["id"]]
+
+    stream = await api_client.get(f"/api/runs/{child['id']}/events")
+    assert "event: challenge.created" in stream.text
+    assert "event: challenge.reconsideration_completed" in stream.text
+    assert "event: challenge.peer_debate_completed" in stream.text
+    assert "event: challenge.advocate_response_completed" in stream.text
+    assert "event: challenge.synthesis_completed" in stream.text
+
+
+@pytest.mark.asyncio
+async def test_challenge_requires_completed_parent(api_client: httpx.AsyncClient) -> None:
+    created = await api_client.post(
+        "/api/runs",
+        json={"decision": "Not completed yet", "debate": True, "clarify": True},
+    )
+    run_id = created.json()["id"]
+    for _ in range(100):
+        record = (await api_client.get(f"/api/runs/{run_id}")).json()
+        if record["stage"] == "awaiting_clarification":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("run did not pause for clarification")
+    response = await api_client.post(
+        f"/api/runs/{run_id}/challenges",
+        json={"kind": "question", "input": "What would change the answer?"},
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [
