@@ -42,9 +42,18 @@ const eventNames: RunEvent["type"][] = [
 ];
 
 type ConnectionState = "closed" | "connecting" | "live" | "reconnecting" | "disconnected";
+type AttentionTarget = "clarification" | "panel";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+}
+
+function scrollToAttentionSection(sectionId: AttentionTarget): void {
+  const scroll = () => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(scroll);
+  else window.setTimeout(scroll, 0);
 }
 
 export default function App() {
@@ -70,6 +79,7 @@ export default function App() {
   const sourceRef = useRef<EventSource | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const appliedEventsRef = useRef(new Set<number>());
+  const pendingAttentionScrollRef = useRef<{ runId: string; target: AttentionTarget } | null>(null);
 
   const refreshRoleLibrary = useCallback(async () => {
     setRoleLibraryError(null);
@@ -158,6 +168,26 @@ export default function App() {
   const streamRunId = selectedRun && !isTerminal(selectedRun) ? selectedRun.id : null;
 
   useEffect(() => {
+    const pending = pendingAttentionScrollRef.current;
+    if (!pending || selectedRun?.id !== pending.runId) return;
+
+    if (pending.target === "panel") {
+      pendingAttentionScrollRef.current = null;
+      scrollToAttentionSection("panel");
+      return;
+    }
+
+    const clarificationReady =
+      selectedRun.clarifying_questions.length > 0 &&
+      selectedRun.clarifying_answers === null &&
+      !selectedRun.clarification_skipped;
+    if (clarificationReady) {
+      pendingAttentionScrollRef.current = null;
+      scrollToAttentionSection("clarification");
+    }
+  }, [selectedRun]);
+
+  useEffect(() => {
     if (!streamRunId) return;
 
     const source = new EventSource(runEventsUrl(streamRunId));
@@ -218,7 +248,12 @@ export default function App() {
     setSubmitError(null);
     try {
       const roleSource: RoleSource = useSavedRoles && canUseSavedRoles ? "library" : "planned";
-      const summary = await createRun(decision.trim(), debate, roleSource, clarify && roleSource === "planned");
+      const shouldAskClarification = clarify && roleSource === "planned";
+      const summary = await createRun(decision.trim(), debate, roleSource, shouldAskClarification);
+      pendingAttentionScrollRef.current = {
+        runId: summary.id,
+        target: shouldAskClarification ? "clarification" : "panel",
+      };
       setHistory((current) => [summary, ...current.filter((item) => item.id !== summary.id)].slice(0, 20));
       setDecision("");
       await selectRun(summary.id);

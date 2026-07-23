@@ -545,9 +545,28 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
 .clarification-form { display: grid; gap: 14px; }
 .clarification-form h3 { margin: 0; font-size: 21px; }
 .clarification-questions { display: grid; gap: 14px; }
-.clarification-questions label { display: grid; gap: 7px; color: var(--ink); font-size: 14px; font-weight: 700; }
-.clarification-questions textarea { min-height: 78px; padding: 12px; color: var(--ink); border: 1px solid #394653; border-radius: 8px; background: #11161e; resize: vertical; }
+.clarification-questions label { display: grid; gap: 7px; color: var(--ink); font-size: 14px; font-weight: 400; }
+.clarification-questions label span { font-weight: 700; }
+.clarification-questions textarea { min-height: 78px; padding: 12px; color: var(--ink); border: 1px solid #394653; border-radius: 8px; background: #11161e; resize: vertical; font-weight: 400; }
 .clarification-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.clarification-summary-section { padding: 0; overflow: hidden; border-color: #334657; background: rgba(23, 27, 36, 0.88); }
+.clarification-summary-section details { padding: 18px 20px; }
+.clarification-summary-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+.clarification-summary-section summary::-webkit-details-marker { display: none; }
+.clarification-summary-section summary > span { display: grid; gap: 5px; }
+.clarification-summary-section summary strong { font-size: 15px; letter-spacing: -0.015em; }
+.clarification-summary-section summary small { color: var(--cyan); font: 11px "DM Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+.clarification-summary-list { display: grid; gap: 12px; margin: 18px 0 0; padding-top: 16px; border-top: 1px solid #303c47; }
+.clarification-summary-list div { display: grid; gap: 5px; }
+.clarification-summary-list dt { color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.5; }
+.clarification-summary-list dd { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .challenge-section { border-color: #4a5841; }
 .challenge-form { display: grid; gap: 14px; max-width: 760px; }
 .challenge-form label { display: grid; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 700; }

@@ -21,6 +21,39 @@ function formatDate(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
+function ClarificationSummary({ run }: { run: RunRecord }) {
+  if (run.clarifying_questions.length === 0) return null;
+  if (run.clarifying_answers === null && !run.clarification_skipped) return null;
+
+  return (
+    <section className="results-section clarification-summary-section" id="clarification-summary">
+      <details open>
+        <summary>
+          <span>
+            <span className="eyebrow">Clarifying context</span>
+            <strong>
+              {run.clarification_skipped
+                ? "Clarifying questions were skipped"
+                : `${run.clarifying_questions.length} answered question${run.clarifying_questions.length === 1 ? "" : "s"}`}
+            </strong>
+          </span>
+          <small>{run.clarification_skipped ? "No extra context added" : "View answers"}</small>
+        </summary>
+        {!run.clarification_skipped && (
+          <dl className="clarification-summary-list">
+            {run.clarifying_questions.map((question, index) => (
+              <div key={question}>
+                <dt>{question}</dt>
+                <dd>{run.clarifying_answers?.[index] ?? "No answer recorded."}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </details>
+    </section>
+  );
+}
+
 export function RunView({
   run,
   connection,
@@ -98,6 +131,7 @@ export function RunView({
             <ClarificationForm runId={run.id} questions={run.clarifying_questions} />
           </section>
         )}
+      <ClarificationSummary run={run} />
 
       <section className="results-section roles-section" id="panel">
         <div className="section-heading">
